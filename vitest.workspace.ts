@@ -9,6 +9,12 @@ export default defineWorkspace([
   },
   {
     test: {
+      name: "contracts",
+      include: ["packages/contracts/__tests__/**/*.test.ts"],
+    },
+  },
+  {
+    test: {
       name: "docker",
       include: ["packages/docker/__tests__/**/*.test.ts"],
     },

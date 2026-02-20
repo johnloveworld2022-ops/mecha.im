@@ -31,7 +31,7 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   // --- auth middleware (skips /healthz) ---
   if (!opts.skipAuth) {
     const token = opts.authToken ?? generateToken();
-    if (!opts.authToken) app.addHook("onReady", () => app.log.info(`Auth token: ${token}`));
+    if (!opts.authToken) app.addHook("onReady", () => app.log.info(`Auth token: ${token.slice(0, 8)}…`));
     app.addHook("preHandler", createAuthMiddleware(token, opts.otp));
   }
 

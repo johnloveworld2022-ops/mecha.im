@@ -1,0 +1,144 @@
+import { describe, it, expect } from "vitest";
+import { ZodError, z } from "zod";
+import {
+  MechaError,
+  ContainerNotFoundError,
+  DockerNotAvailableError,
+  ContainerAlreadyExistsError,
+  InvalidPathError,
+  ImageNotFoundError,
+} from "@mecha/core";
+import {
+  InvalidPortError,
+  InvalidPermissionModeError,
+  ContainerStartError,
+  PathNotFoundError,
+  PathNotDirectoryError,
+  NoPortBindingError,
+  ConfigureNoFieldsError,
+  toHttpStatus,
+  toExitCode,
+  toUserMessage,
+} from "../src/errors.js";
+
+describe("error classes", () => {
+  it("InvalidPortError has correct message and code", () => {
+    const err = new InvalidPortError(80);
+    expect(err.message).toBe("Invalid port: 80 (must be 1024-65535)");
+    expect(err.code).toBe("INVALID_PORT");
+    expect(err).toBeInstanceOf(MechaError);
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("InvalidPermissionModeError has correct message and code", () => {
+    const err = new InvalidPermissionModeError("yolo");
+    expect(err.message).toBe("Invalid permission mode: yolo (must be one of: default, plan, full-auto)");
+    expect(err.code).toBe("INVALID_PERMISSION_MODE");
+    expect(err).toBeInstanceOf(MechaError);
+  });
+
+  it("ContainerStartError includes cause", () => {
+    const cause = new Error("port already in use");
+    const err = new ContainerStartError("mecha-mx-foo", cause);
+    expect(err.message).toBe("Failed to start container mecha-mx-foo: port already in use");
+    expect(err.code).toBe("CONTAINER_START_FAILED");
+    expect(err.cause).toBe(cause);
+  });
+
+  it("ContainerStartError without cause", () => {
+    const err = new ContainerStartError("mecha-mx-foo");
+    expect(err.message).toBe("Failed to start container mecha-mx-foo: unknown");
+    expect(err.cause).toBeUndefined();
+  });
+
+  it("PathNotFoundError has correct message and code", () => {
+    const err = new PathNotFoundError("/nonexistent");
+    expect(err.message).toBe("Path does not exist: /nonexistent");
+    expect(err.code).toBe("PATH_NOT_FOUND");
+  });
+
+  it("PathNotDirectoryError has correct message and code", () => {
+    const err = new PathNotDirectoryError("/tmp/file.txt");
+    expect(err.message).toBe("Path is not a directory: /tmp/file.txt");
+    expect(err.code).toBe("PATH_NOT_DIRECTORY");
+  });
+
+  it("NoPortBindingError has correct message and code", () => {
+    const err = new NoPortBindingError("mx-foo");
+    expect(err.message).toBe("No port binding found for mecha: mx-foo");
+    expect(err.code).toBe("NO_PORT_BINDING");
+  });
+
+  it("ConfigureNoFieldsError has correct message and code", () => {
+    const err = new ConfigureNoFieldsError();
+    expect(err.message).toBe("At least one field required: claudeToken, anthropicApiKey, otp, permissionMode");
+    expect(err.code).toBe("CONFIGURE_NO_FIELDS");
+  });
+});
+
+describe("toHttpStatus", () => {
+  it("maps MechaError codes to HTTP status", () => {
+    expect(toHttpStatus(new InvalidPortError(80))).toBe(400);
+    expect(toHttpStatus(new InvalidPermissionModeError("x"))).toBe(400);
+    expect(toHttpStatus(new PathNotFoundError("/x"))).toBe(400);
+    expect(toHttpStatus(new PathNotDirectoryError("/x"))).toBe(400);
+    expect(toHttpStatus(new ConfigureNoFieldsError())).toBe(400);
+    expect(toHttpStatus(new ContainerNotFoundError("x"))).toBe(404);
+    expect(toHttpStatus(new ContainerAlreadyExistsError("x"))).toBe(409);
+    expect(toHttpStatus(new ContainerStartError("x"))).toBe(500);
+    expect(toHttpStatus(new DockerNotAvailableError())).toBe(503);
+    expect(toHttpStatus(new NoPortBindingError("x"))).toBe(500);
+    expect(toHttpStatus(new InvalidPathError("/x"))).toBe(400);
+    expect(toHttpStatus(new ImageNotFoundError("x"))).toBe(500);
+  });
+
+  it("maps ZodError to 400", () => {
+    try {
+      z.string().min(1).parse("");
+    } catch (err) {
+      expect(toHttpStatus(err)).toBe(400);
+    }
+  });
+
+  it("maps unknown MechaError code to 500", () => {
+    const err = new MechaError("custom", "UNKNOWN_CODE");
+    expect(toHttpStatus(err)).toBe(500);
+  });
+
+  it("maps non-Error to 500", () => {
+    expect(toHttpStatus("string error")).toBe(500);
+    expect(toHttpStatus(null)).toBe(500);
+    expect(toHttpStatus(42)).toBe(500);
+  });
+});
+
+describe("toExitCode", () => {
+  it("returns 1 for all errors", () => {
+    expect(toExitCode(new InvalidPortError(80))).toBe(1);
+    expect(toExitCode(new Error("generic"))).toBe(1);
+    expect(toExitCode("string")).toBe(1);
+  });
+});
+
+describe("toUserMessage", () => {
+  it("formats ZodError with issue messages", () => {
+    try {
+      z.object({ name: z.string().min(1) }).parse({ name: "" });
+    } catch (err) {
+      const msg = toUserMessage(err);
+      expect(msg).toMatch(/^Validation error:/);
+      expect(msg.length).toBeGreaterThan("Validation error: ".length);
+    }
+  });
+
+  it("returns Error.message for regular errors", () => {
+    expect(toUserMessage(new InvalidPortError(80))).toBe("Invalid port: 80 (must be 1024-65535)");
+    expect(toUserMessage(new Error("boom"))).toBe("boom");
+  });
+
+  it("returns fallback for non-Error values", () => {
+    expect(toUserMessage("string")).toBe("Unknown error");
+    expect(toUserMessage(null)).toBe("Unknown error");
+    expect(toUserMessage(undefined)).toBe("Unknown error");
+  });
+});

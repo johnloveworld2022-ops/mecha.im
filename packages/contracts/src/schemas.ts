@@ -1,0 +1,118 @@
+import { z } from "zod";
+
+// --- Shared constants (single source of truth) ---
+
+export const PERMISSION_MODES = ["default", "plan", "full-auto"] as const;
+export const PermissionMode = z.enum(PERMISSION_MODES);
+export type PermissionMode = z.infer<typeof PermissionMode>;
+
+/** Env var keys that must not be set by users (managed internally) */
+export const BLOCKED_ENV_KEYS = new Set([
+  "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
+  "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "MECHA_OTP",
+  "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN", "MECHA_ID",
+]);
+
+/** Pattern for allowed env var keys */
+const ALLOWED_ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
+
+/** Validates a single env entry "KEY=VALUE" */
+const EnvEntry = z.string().refine((entry) => {
+  const eqIdx = entry.indexOf("=");
+  if (eqIdx <= 0) return false;
+  const key = entry.slice(0, eqIdx);
+  return ALLOWED_ENV_KEY.test(key) && !BLOCKED_ENV_KEYS.has(key);
+}, { message: "Invalid env entry: must be KEY=VALUE with allowed uppercase key" });
+
+// --- Service operation schemas ---
+
+export const MechaUpInput = z.object({
+  projectPath:    z.string().min(1),
+  port:           z.number().int().min(1024).max(65535).optional(),
+  claudeToken:    z.string().optional(),
+  anthropicApiKey: z.string().optional(),
+  otp:            z.string().optional(),
+  permissionMode: PermissionMode.optional(),
+  env:            z.array(EnvEntry).optional(),
+});
+export type MechaUpInput = z.infer<typeof MechaUpInput>;
+
+export const MechaUpResult = z.object({
+  id:        z.string(),
+  name:      z.string(),
+  port:      z.number(),
+  authToken: z.string(),
+});
+export type MechaUpResult = z.infer<typeof MechaUpResult>;
+
+export const MechaRmInput = z.object({
+  id:        z.string().min(1),
+  withState: z.boolean().default(false),
+  force:     z.boolean().default(false),
+});
+export type MechaRmInput = z.infer<typeof MechaRmInput>;
+
+export const MechaConfigureInput = z.object({
+  id:              z.string().min(1),
+  claudeToken:     z.string().optional(),
+  anthropicApiKey: z.string().optional(),
+  otp:             z.string().optional(),
+  permissionMode:  PermissionMode.optional(),
+});
+export type MechaConfigureInput = z.infer<typeof MechaConfigureInput>;
+
+export const MechaLogsInput = z.object({
+  id:     z.string().min(1),
+  follow: z.boolean().default(false),
+  tail:   z.number().int().min(0).default(100),
+  since:  z.number().optional(),
+});
+export type MechaLogsInput = z.infer<typeof MechaLogsInput>;
+
+export const MechaExecInput = z.object({
+  id:  z.string().min(1),
+  cmd: z.array(z.string()).min(1),
+});
+export type MechaExecInput = z.infer<typeof MechaExecInput>;
+
+export const MechaLsItem = z.object({
+  id:      z.string(),
+  name:    z.string(),
+  state:   z.string(),
+  status:  z.string(),
+  path:    z.string(),
+  port:    z.number().optional(),
+  created: z.number(),
+});
+export type MechaLsItem = z.infer<typeof MechaLsItem>;
+
+export const MechaStatusResult = z.object({
+  id:         z.string(),
+  name:       z.string(),
+  state:      z.string(),
+  running:    z.boolean(),
+  port:       z.number().optional(),
+  path:       z.string(),
+  image:      z.string(),
+  startedAt:  z.string().optional(),
+  finishedAt: z.string().optional(),
+});
+export type MechaStatusResult = z.infer<typeof MechaStatusResult>;
+
+export const DoctorResult = z.object({
+  dockerAvailable: z.boolean(),
+  networkExists:   z.boolean(),
+  issues:          z.array(z.string()),
+});
+export type DoctorResult = z.infer<typeof DoctorResult>;
+
+export const UiUrlResult = z.object({
+  url: z.string(),
+});
+export type UiUrlResult = z.infer<typeof UiUrlResult>;
+
+export const McpEndpointResult = z.object({
+  endpoint: z.string(),
+  note:     z.string(),
+});
+export type McpEndpointResult = z.infer<typeof McpEndpointResult>;
