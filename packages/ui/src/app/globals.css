@@ -1,0 +1,34 @@
+*,
+*::before,
+*::after {
+  box-sizing: border-box;
+  margin: 0;
+  padding: 0;
+}
+
+:root {
+  --bg: #0a0a0a;
+  --bg-secondary: #1a1a1a;
+  --bg-hover: #252525;
+  --text: #e5e5e5;
+  --text-muted: #888;
+  --border: #333;
+  --accent: #3b82f6;
+  --accent-hover: #2563eb;
+  --user-bubble: #1e3a5f;
+  --assistant-bubble: #1a1a1a;
+}
+
+html,
+body {
+  height: 100%;
+  font-family: -apple-system, BlinkMacSystemFont, "Segoe UI", Roboto,
+    "Helvetica Neue", Arial, sans-serif;
+  background: var(--bg);
+  color: var(--text);
+  -webkit-font-smoothing: antialiased;
+}
+
+#__next {
+  height: 100%;
+}
