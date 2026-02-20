@@ -103,6 +103,18 @@ describe("lifecycle commands", () => {
     });
   });
 
+  describe("mecha rm (error)", () => {
+    it("reports error when remove fails", async () => {
+      mockRemoveContainer.mockRejectedValueOnce(new Error("remove failed"));
+      const program = new Command();
+      registerRmCommand(program, deps);
+      await program.parseAsync(["rm", "mx-bad"], { from: "user" });
+
+      expect(formatter.error).toHaveBeenCalled();
+      expect(process.exitCode).toBe(1);
+    });
+  });
+
   describe("mecha rm", () => {
     it("removes a container", async () => {
       const program = new Command();

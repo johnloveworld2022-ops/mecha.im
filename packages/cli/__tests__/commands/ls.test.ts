@@ -67,6 +67,20 @@ describe("mecha ls", () => {
     expect(rows[0]!.STATE).toBe("running");
   });
 
+  it("reports errors on listMechaContainers failure", async () => {
+    mockListMechaContainers.mockRejectedValueOnce(new Error("docker down"));
+    const mockDocker = { docker: {} };
+    const deps: CommandDeps = { dockerClient: mockDocker as any, formatter };
+
+    const program = new Command();
+    program.option("--json", "JSON output");
+    registerLsCommand(program, deps);
+    await program.parseAsync(["ls"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalled();
+    expect(process.exitCode).toBe(1);
+  });
+
   it("outputs JSON when --json flag is set", async () => {
     const mockDocker = { docker: {} };
     const deps: CommandDeps = {

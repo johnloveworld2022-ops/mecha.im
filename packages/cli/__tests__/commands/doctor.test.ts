@@ -80,6 +80,27 @@ describe("mecha doctor", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("reports unhealthy when network check throws", async () => {
+    const mockDocker = {
+      docker: {
+        ping: vi.fn().mockResolvedValue("OK"),
+        listNetworks: vi.fn().mockRejectedValue(new Error("network check failed")),
+      },
+    };
+
+    const deps: CommandDeps = {
+      dockerClient: mockDocker as any,
+      formatter,
+    };
+
+    const program = new Command();
+    registerDoctorCommand(program, deps);
+    await program.parseAsync(["doctor"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("Failed to check"));
+    expect(process.exitCode).toBe(1);
+  });
+
   it("reports unhealthy when network is missing", async () => {
     const mockDocker = {
       docker: {

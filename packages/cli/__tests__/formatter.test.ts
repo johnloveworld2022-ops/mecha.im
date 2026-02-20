@@ -81,4 +81,19 @@ describe("createFormatter", () => {
     fmt.table([], ["A", "B"]);
     expect(spy).toHaveBeenCalledWith("(no results)");
   });
+
+  it("table() is suppressed in quiet mode", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fmt = createFormatter({ quiet: true });
+    fmt.table([{ A: "1" }], ["A"]);
+    expect(spy).not.toHaveBeenCalled();
+  });
+
+  it("table() handles missing values in rows", () => {
+    const spy = vi.spyOn(console, "log").mockImplementation(() => {});
+    const fmt = createFormatter({ noColor: true });
+    fmt.table([{ A: "1" }], ["A", "B"]);
+    // header + separator + 1 data row = 3 calls
+    expect(spy).toHaveBeenCalledTimes(3);
+  });
 });
