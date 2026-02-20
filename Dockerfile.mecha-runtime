@@ -28,17 +28,25 @@ RUN pnpm --filter @mecha/runtime --prod deploy --legacy /app
 # ---- Production Stage ----
 FROM node:20-slim@sha256:c6585df72c34172bebd8d36abed961e231d7d3b5cee2e01294c4495e8a03f687 AS production
 
-# Security: install tini, rename existing node user to mecha
+# Install tini and Tailscale CLI for mesh networking
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini=0.19.0-1+b3 \
+    curl ca-certificates \
+    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.noarmor.gpg \
+       -o /usr/share/keyrings/tailscale-archive-keyring.gpg \
+    && curl -fsSL https://pkgs.tailscale.com/stable/debian/bookworm.tailscale-keyring.list \
+       -o /etc/apt/sources.list.d/tailscale.list \
+    && apt-get update && apt-get install -y --no-install-recommends tailscale \
+    && apt-get purge -y curl \
+    && apt-get autoremove -y \
     && rm -rf /var/lib/apt/lists/*
 
 # Rename the existing node user/group (uid=1000, gid=1000) to mecha
 RUN groupmod -n mecha node && \
     usermod -l mecha -d /home/mecha -m node
 
-# Install Claude Code CLI globally (pinned for reproducibility)
-RUN npm install -g @anthropic-ai/claude-code@2.1.49
+# Install Claude Code, Codex, and Gemini CLIs globally
+RUN npm install -g @anthropic-ai/claude-code @openai/codex @google/gemini-cli
 
 # Create required writable directories and Claude onboarding flag
 RUN mkdir -p /var/lib/mecha /tmp /home/mecha/.claude && \
