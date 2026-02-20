@@ -84,6 +84,9 @@ venv/
 dist/
 build/
 
+# Turborepo cache
+.turbo/
+
 # Python package build
 *.egg-info/
 
