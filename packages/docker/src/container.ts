@@ -25,9 +25,6 @@ export async function createContainer(
     Image: opts.image,
     Env: [
       `MECHA_ID=${opts.mechaId}`,
-      ...(process.env["CLAUDE_CODE_OAUTH_TOKEN"]
-        ? [`CLAUDE_CODE_OAUTH_TOKEN=${process.env["CLAUDE_CODE_OAUTH_TOKEN"]}`]
-        : []),
       ...(opts.env || []),
     ],
     Labels: {

@@ -14,15 +14,21 @@ import {
   createContainer,
   startContainer,
 } from "@mecha/docker";
+import { randomBytes } from "node:crypto";
 import { stat, readFile } from "node:fs/promises";
 import { resolve, join } from "node:path";
+
+const VALID_PERMISSION_MODES = ["default", "plan", "full-auto"] as const;
 
 export function registerUpCommand(parent: Command, deps: CommandDeps): void {
   parent
     .command("up <path>")
     .description("Create and start a Mecha from a project path")
     .option("-p, --port <port>", "Host port to bind", String(DEFAULTS.PORT_BASE))
-    .action(async (pathArg: string, cmdOpts: { port: string }) => {
+    .option("--claude-token <token>", "Claude OAuth token for this mecha")
+    .option("--otp <secret>", "TOTP secret for runtime access")
+    .option("--permission-mode <mode>", "Agent permission mode: default, plan, full-auto")
+    .action(async (pathArg: string, cmdOpts: { port: string; claudeToken?: string; otp?: string; permissionMode?: string }) => {
       const { dockerClient, formatter } = deps;
       const projectPath = resolve(pathArg);
 
@@ -42,6 +48,12 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
 
       if (!Number.isInteger(hostPort) || hostPort < 1024 || hostPort > 65535) {
         formatter.error(`Invalid port: ${cmdOpts.port} (must be 1024-65535)`);
+        process.exitCode = 1;
+        return;
+      }
+
+      if (cmdOpts.permissionMode && !VALID_PERMISSION_MODES.includes(cmdOpts.permissionMode as typeof VALID_PERMISSION_MODES[number])) {
+        formatter.error(`Invalid permission mode: ${cmdOpts.permissionMode} (must be one of: ${VALID_PERMISSION_MODES.join(", ")})`);
         process.exitCode = 1;
         return;
       }
@@ -73,11 +85,18 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
         await ensureVolume(dockerClient, vName);
 
         // Create and start container
-        // Pass OTP to container if configured
         const extraEnv: string[] = [];
-        if (process.env["MECHA_OTP"]) {
-          extraEnv.push(`MECHA_OTP=${process.env["MECHA_OTP"]}`);
-        }
+
+        const authToken = randomBytes(32).toString("hex");
+        extraEnv.push(`MECHA_AUTH_TOKEN=${authToken}`);
+
+        const claudeToken = cmdOpts.claudeToken ?? process.env["CLAUDE_CODE_OAUTH_TOKEN"];
+        if (claudeToken) extraEnv.push(`CLAUDE_CODE_OAUTH_TOKEN=${claudeToken}`);
+
+        const otp = cmdOpts.otp ?? process.env["MECHA_OTP"];
+        if (otp) extraEnv.push(`MECHA_OTP=${otp}`);
+
+        if (cmdOpts.permissionMode) extraEnv.push(`MECHA_PERMISSION_MODE=${cmdOpts.permissionMode}`);
 
         await createContainer(dockerClient, {
           containerName: cName,
@@ -86,13 +105,14 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
           projectPath,
           volumeName: vName,
           hostPort,
-          env: extraEnv.length > 0 ? extraEnv : undefined,
+          env: extraEnv,
         });
         await startContainer(dockerClient, cName);
 
         formatter.success(`Mecha started successfully.`);
         formatter.info(`  ID:   ${id}`);
         formatter.info(`  Port: ${hostPort}`);
+        formatter.info(`  Auth: ${authToken}`);
         formatter.info(`  Name: ${cName}`);
       } catch (err) {
         formatter.error(errMsg(err));

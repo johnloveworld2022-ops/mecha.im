@@ -21,7 +21,10 @@ import { getOtpSecret } from "@/lib/auth";
 const ALLOWED_ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const BLOCKED_ENV_KEYS = new Set([
   "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
+  "CLAUDE_CODE_OAUTH_TOKEN", "MECHA_OTP", "MECHA_PERMISSION_MODE",
 ]);
+
+const VALID_PERMISSION_MODES = ["default", "plan", "full-auto"] as const;
 
 function validateEnv(env: unknown): string[] | null {
   if (!env) return [];
@@ -54,9 +57,9 @@ export const GET = withAuth(async () => {
 });
 
 export const POST = withAuth(async (request: NextRequest) => {
-  let body: { path?: string; env?: unknown };
+  let body: { path?: string; env?: unknown; claudeToken?: string; otp?: string; permissionMode?: string };
   try {
-    body = await request.json() as { path?: string; env?: unknown };
+    body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
@@ -76,6 +79,16 @@ export const POST = withAuth(async (request: NextRequest) => {
   const env = validateEnv(body.env);
   if (env === null) {
     return NextResponse.json({ error: "Invalid env format" }, { status: 400 });
+  }
+
+  if (body.claudeToken !== undefined && typeof body.claudeToken !== "string") {
+    return NextResponse.json({ error: "claudeToken must be a string" }, { status: 400 });
+  }
+  if (body.otp !== undefined && typeof body.otp !== "string") {
+    return NextResponse.json({ error: "otp must be a string" }, { status: 400 });
+  }
+  if (body.permissionMode !== undefined && !VALID_PERMISSION_MODES.includes(body.permissionMode as typeof VALID_PERMISSION_MODES[number])) {
+    return NextResponse.json({ error: `permissionMode must be one of: ${VALID_PERMISSION_MODES.join(", ")}` }, { status: 400 });
   }
 
   // Serialize container creation to prevent port allocation races
@@ -110,10 +123,14 @@ export const POST = withAuth(async (request: NextRequest) => {
       `MECHA_AUTH_TOKEN=${authToken}`,
       ...env,
     ];
-    const otpSecret = getOtpSecret();
-    if (otpSecret) {
-      containerEnv.push(`MECHA_OTP=${otpSecret}`);
-    }
+
+    const claudeToken = body.claudeToken || process.env["CLAUDE_CODE_OAUTH_TOKEN"];
+    if (claudeToken) containerEnv.push(`CLAUDE_CODE_OAUTH_TOKEN=${claudeToken}`);
+
+    const otpSecret = body.otp || getOtpSecret();
+    if (otpSecret) containerEnv.push(`MECHA_OTP=${otpSecret}`);
+
+    if (body.permissionMode) containerEnv.push(`MECHA_PERMISSION_MODE=${body.permissionMode}`);
 
     await createContainer(client, {
       containerName: cName,
