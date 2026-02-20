@@ -55,7 +55,11 @@ export function MechaList() {
   async function action(id: string, act: string, method = "POST") {
     setActing(id);
     try {
-      await fetch(`/api/mechas/${id}/${act}`, { method });
+      const res = await fetch(`/api/mechas/${id}/${act}`, { method });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setCreateError(data.error ?? `Action failed (${res.status})`);
+      }
       await fetchMechas();
     } finally {
       setActing(null);
@@ -65,7 +69,11 @@ export function MechaList() {
   async function removeMecha(id: string) {
     setActing(id);
     try {
-      await fetch(`/api/mechas/${id}`, { method: "DELETE" });
+      const res = await fetch(`/api/mechas/${id}`, { method: "DELETE" });
+      if (!res.ok) {
+        const data = await res.json().catch(() => ({})) as { error?: string };
+        setCreateError(data.error ?? `Remove failed (${res.status})`);
+      }
       await fetchMechas();
     } finally {
       setActing(null);

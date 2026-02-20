@@ -28,7 +28,8 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
     .option("--claude-token <token>", "Claude OAuth token for this mecha")
     .option("--otp <secret>", "TOTP secret for runtime access")
     .option("--permission-mode <mode>", "Agent permission mode: default, plan, full-auto")
-    .action(async (pathArg: string, cmdOpts: { port: string; claudeToken?: string; otp?: string; permissionMode?: string }) => {
+    .option("--show-token", "Print the full auth token to stdout")
+    .action(async (pathArg: string, cmdOpts: { port: string; claudeToken?: string; otp?: string; permissionMode?: string; showToken?: boolean }) => {
       const { dockerClient, formatter } = deps;
       const projectPath = resolve(pathArg);
 
@@ -112,7 +113,7 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
         formatter.success(`Mecha started successfully.`);
         formatter.info(`  ID:   ${id}`);
         formatter.info(`  Port: ${hostPort}`);
-        formatter.info(`  Auth: ${authToken}`);
+        formatter.info(`  Auth: ${cmdOpts.showToken ? authToken : authToken.slice(0, 8) + "... (use --show-token to reveal)"}`);
         formatter.info(`  Name: ${cName}`);
       } catch (err) {
         formatter.error(errMsg(err));

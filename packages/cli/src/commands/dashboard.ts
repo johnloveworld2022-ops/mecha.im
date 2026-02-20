@@ -38,7 +38,7 @@ export function registerDashboardCommand(parent: Command, deps: CommandDeps): vo
 
       formatter.info(`Starting dashboard on http://localhost:${port}`);
 
-      const child = spawn("npx", ["next", "start", "-p", port], {
+      const child = spawn("npx", ["next", "start", "-p", port, "-H", "127.0.0.1"], {
         cwd: dashboardDir,
         stdio: "inherit",
         env: { ...process.env },

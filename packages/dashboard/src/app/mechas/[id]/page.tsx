@@ -31,7 +31,6 @@ export default async function MechaDetailPage({
   const isRunning = state?.Running ?? false;
   const portBindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
   const hostPort = portBindings?.[0]?.HostPort;
-  const runtimeUrl = hostPort ? `http://localhost:${hostPort}` : null;
 
   const stateColor = isRunning ? "var(--success)" : "var(--danger)";
 

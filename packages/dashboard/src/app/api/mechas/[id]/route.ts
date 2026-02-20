@@ -12,7 +12,7 @@ export const GET = withAuth(async (_request: NextRequest, { params }) => {
 
   try {
     const info = await inspectContainer(client, name);
-    // Sanitize: omit Config.Env and other sensitive internals
+    // Omit Config.Env, host mount sources, labels, and PID to avoid leaking internals
     const portBindings = info.NetworkSettings?.Ports ?? {};
     return NextResponse.json({
       id,
@@ -20,16 +20,13 @@ export const GET = withAuth(async (_request: NextRequest, { params }) => {
       state: {
         status: info.State?.Status,
         running: info.State?.Running,
-        pid: info.State?.Pid,
         startedAt: info.State?.StartedAt,
         finishedAt: info.State?.FinishedAt,
       },
       image: info.Config?.Image,
-      labels: info.Config?.Labels,
       ports: portBindings,
       mounts: info.Mounts?.map((m) => ({
         type: m.Type,
-        source: m.Source,
         destination: m.Destination,
         rw: m.RW,
       })),

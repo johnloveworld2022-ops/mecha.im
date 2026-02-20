@@ -1,5 +1,5 @@
 import { randomBytes } from "node:crypto";
-import { existsSync, statSync } from "node:fs";
+import { access, stat } from "node:fs/promises";
 import { resolve } from "node:path";
 
 // Simple mutex to serialize container creation and prevent port races
@@ -21,7 +21,7 @@ import { getOtpSecret } from "@/lib/auth";
 const ALLOWED_ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const BLOCKED_ENV_KEYS = new Set([
   "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
-  "CLAUDE_CODE_OAUTH_TOKEN", "MECHA_OTP", "MECHA_PERMISSION_MODE",
+  "CLAUDE_CODE_OAUTH_TOKEN", "MECHA_OTP", "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN",
 ]);
 
 const VALID_PERMISSION_MODES = ["default", "plan", "full-auto"] as const;
@@ -71,8 +71,13 @@ export const POST = withAuth(async (request: NextRequest) => {
 
   // Validate path exists and is a directory
   const resolved = resolve(projectPath);
-  if (!existsSync(resolved) || !statSync(resolved).isDirectory()) {
-    return NextResponse.json({ error: "Path does not exist or is not a directory" }, { status: 400 });
+  try {
+    const st = await stat(resolved);
+    if (!st.isDirectory()) {
+      return NextResponse.json({ error: "Path is not a directory" }, { status: 400 });
+    }
+  } catch {
+    return NextResponse.json({ error: "Path does not exist" }, { status: 400 });
   }
 
   // Validate env vars

@@ -1,6 +1,13 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { isAuthEnabled, getSessionFromCookies, validateSession } from "./auth";
 
+/** Returns true if authenticated, false otherwise */
+export async function checkAuth(): Promise<boolean> {
+  if (!isAuthEnabled()) return true;
+  const sessionId = await getSessionFromCookies();
+  return !!sessionId && validateSession(sessionId);
+}
+
 type RouteHandler = (
   request: NextRequest,
   context: { params: Promise<Record<string, string>> },
@@ -8,11 +15,8 @@ type RouteHandler = (
 
 export function withAuth(handler: RouteHandler): RouteHandler {
   return async (request, context) => {
-    if (isAuthEnabled()) {
-      const sessionId = await getSessionFromCookies();
-      if (!sessionId || !validateSession(sessionId)) {
-        return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
-      }
+    if (!(await checkAuth())) {
+      return NextResponse.json({ error: "Unauthorized" }, { status: 401 });
     }
     return handler(request, context);
   };

@@ -26,6 +26,8 @@ function evictExpired(): void {
 }
 
 export function isAuthEnabled(): boolean {
+  // Auth is enabled when MECHA_OTP is configured, unless explicitly disabled
+  if (process.env.MECHA_AUTH_DISABLED === "1") return false;
   return !!process.env.MECHA_OTP;
 }
 
