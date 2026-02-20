@@ -21,6 +21,8 @@ export function MechaList() {
   const [claudeToken, setClaudeToken] = useState("");
   const [otp, setOtp] = useState("");
   const [permissionMode, setPermissionMode] = useState("default");
+  const [actionError, setActionError] = useState("");
+  const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
 
   const fetchMechas = useCallback(async () => {
     try {
@@ -54,11 +56,12 @@ export function MechaList() {
 
   async function action(id: string, act: string, method = "POST") {
     setActing(id);
+    setActionError("");
     try {
       const res = await fetch(`/api/mechas/${id}/${act}`, { method });
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string };
-        setCreateError(data.error ?? `Action failed (${res.status})`);
+        setActionError(data.error ?? `Action failed (${res.status})`);
       }
       await fetchMechas();
     } finally {
@@ -67,12 +70,14 @@ export function MechaList() {
   }
 
   async function removeMecha(id: string) {
+    setConfirmRemove(null);
     setActing(id);
+    setActionError("");
     try {
       const res = await fetch(`/api/mechas/${id}`, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string };
-        setCreateError(data.error ?? `Remove failed (${res.status})`);
+        setActionError(data.error ?? `Remove failed (${res.status})`);
       }
       await fetchMechas();
     } finally {
@@ -360,11 +365,7 @@ export function MechaList() {
                     )}
                     <button
                       disabled={isActing}
-                      onClick={() => {
-                        if (window.confirm(`Remove mecha "${m.id}"? This will delete the container.`)) {
-                          removeMecha(m.id);
-                        }
-                      }}
+                      onClick={() => setConfirmRemove(m.id)}
                       style={btnStyle("var(--danger)", isActing)}
                     >Remove</button>
                   </div>
@@ -375,6 +376,83 @@ export function MechaList() {
         </tbody>
       </table>
       </div>
+      {actionError && (
+        <div style={{
+          marginTop: "8px",
+          padding: "8px 12px",
+          fontSize: "13px",
+          color: "var(--danger)",
+          backgroundColor: "rgba(239,68,68,0.1)",
+          borderRadius: "6px",
+          border: "1px solid var(--danger)",
+          display: "flex",
+          alignItems: "center",
+          justifyContent: "space-between",
+        }}>
+          <span>{actionError}</span>
+          <button
+            onClick={() => setActionError("")}
+            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "16px" }}
+          >×</button>
+        </div>
+      )}
+      {confirmRemove && (
+        <div
+          onClick={() => setConfirmRemove(null)}
+          style={{
+            position: "fixed",
+            inset: 0,
+            backgroundColor: "rgba(0,0,0,0.6)",
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            zIndex: 1000,
+          }}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "var(--bg-secondary)",
+              border: "1px solid var(--border)",
+              borderRadius: "12px",
+              padding: "24px",
+              maxWidth: "400px",
+              width: "90%",
+            }}
+          >
+            <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "8px" }}>Remove Mecha</h3>
+            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
+              Remove <code style={{ color: "var(--text)" }}>{confirmRemove}</code>? This will delete the container.
+            </p>
+            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
+              <button
+                onClick={() => setConfirmRemove(null)}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  borderRadius: "6px",
+                  border: "1px solid var(--border)",
+                  backgroundColor: "transparent",
+                  color: "var(--text)",
+                  cursor: "pointer",
+                }}
+              >Cancel</button>
+              <button
+                onClick={() => removeMecha(confirmRemove)}
+                style={{
+                  padding: "8px 16px",
+                  fontSize: "13px",
+                  borderRadius: "6px",
+                  border: "none",
+                  backgroundColor: "var(--danger)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >Remove</button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
 }
