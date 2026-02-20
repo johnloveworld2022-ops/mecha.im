@@ -30,7 +30,7 @@ export function registerAgentRoutes(
     if (!agentOpts) {
       return reply.code(503).send({
         error: "Agent not configured",
-        detail: "ANTHROPIC_API_KEY or Claude auth required",
+        detail: "Run 'claude setup-token' inside the container to configure Claude auth",
       });
     }
 

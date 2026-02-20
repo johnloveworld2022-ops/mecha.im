@@ -38,6 +38,7 @@ function resolveSocketPath(): string | undefined {
   // 3. Common socket paths
   const candidates = [
     "/var/run/docker.sock",
+    join(homedir(), ".orbstack/run/docker.sock"),
     join(homedir(), ".colima/default/docker.sock"),
     join(homedir(), ".rd/docker.sock"),
     join(homedir(), ".local/share/containers/podman/machine/podman.sock"),
