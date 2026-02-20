@@ -51,6 +51,16 @@ describe("computeMechaId", () => {
     expect(id).toMatch(/^mx-my-project-v2-/);
   });
 
+  it("uses 'root' slug for the root path", () => {
+    const id = computeMechaId("/");
+    expect(id).toMatch(/^mx-root-/);
+  });
+
+  it("uses 'root' slug when dir name is all special characters", () => {
+    const id = computeMechaId("/path/to/...");
+    expect(id).toMatch(/^mx-root-/);
+  });
+
   it("handles paths with trailing slashes", () => {
     const id1 = computeMechaId("/path/to/project");
     const id2 = computeMechaId("/path/to/project/");
