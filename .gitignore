@@ -86,6 +86,10 @@ build/
 .next/
 next-env.d.ts
 
+# TypeScript incremental build info
+tsconfig.tsbuildinfo
+*.tsbuildinfo
+
 # Turborepo cache
 .turbo/
 
