@@ -37,9 +37,13 @@ RUN apt-get update && apt-get install -y --no-install-recommends \
 RUN groupmod -n mecha node && \
     usermod -l mecha -d /home/mecha -m node
 
-# Create required writable directories
-RUN mkdir -p /var/lib/mecha /workspace /tmp && \
-    chown -R mecha:mecha /var/lib/mecha /workspace
+# Install Claude Code CLI globally
+RUN npm install -g @anthropic-ai/claude-code
+
+# Create required writable directories and Claude onboarding flag
+RUN mkdir -p /var/lib/mecha /workspace /tmp /home/mecha/.claude && \
+    echo '{"hasCompletedOnboarding": true}' > /home/mecha/.claude.json && \
+    chown -R mecha:mecha /var/lib/mecha /workspace /home/mecha
 
 WORKDIR /app
 

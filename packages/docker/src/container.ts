@@ -29,6 +29,10 @@ export async function createContainer(
     Image: opts.image,
     Env: [
       `MECHA_ID=${opts.mechaId}`,
+      // Forward Claude setup token for subscription-based auth (§11.2)
+      ...(process.env["CLAUDE_CODE_OAUTH_TOKEN"]
+        ? [`CLAUDE_CODE_OAUTH_TOKEN=${process.env["CLAUDE_CODE_OAUTH_TOKEN"]}`]
+        : []),
       ...(opts.env || []),
     ],
     Labels: {
@@ -57,9 +61,11 @@ export async function createContainer(
         `${opts.projectPath}:${MOUNT_PATHS.WORKSPACE}`,
         `${opts.volumeName}:${MOUNT_PATHS.STATE}`,
       ],
-      // Writable tmpfs for /tmp
+      // Writable tmpfs
       Tmpfs: {
         [MOUNT_PATHS.TMP]: "rw,noexec,nosuid,size=256m",
+        // Claude Code needs writable home for config, sessions, and npm cache
+        "/home/mecha": `rw,nosuid,size=256m,uid=${SECURITY.UID},gid=${SECURITY.GID}`,
       },
       // Network
       NetworkMode: DEFAULTS.NETWORK,

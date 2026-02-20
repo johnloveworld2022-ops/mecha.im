@@ -13,8 +13,8 @@ import {
   createContainer,
   startContainer,
 } from "@mecha/docker";
-import { stat } from "node:fs/promises";
-import { resolve } from "node:path";
+import { stat, readFile } from "node:fs/promises";
+import { resolve, join } from "node:path";
 
 export function registerUpCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -38,6 +38,28 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
       const cName = containerName(id);
       const vName = volumeName(id);
       const hostPort = parseInt(cmdOpts.port, 10);
+
+      // Load .env files: project dir first, then cwd (project dir takes priority)
+      for (const dir of [process.cwd(), projectPath]) {
+        try {
+          const envPath = join(dir, ".env");
+          const envContent = await readFile(envPath, "utf-8");
+          for (const line of envContent.split("\n")) {
+            const trimmed = line.trim();
+            if (!trimmed || trimmed.startsWith("#")) continue;
+            const eqIdx = trimmed.indexOf("=");
+            if (eqIdx > 0) {
+              const key = trimmed.slice(0, eqIdx);
+              const value = trimmed.slice(eqIdx + 1);
+              if (!process.env[key]) {
+                process.env[key] = value;
+              }
+            }
+          }
+        } catch {
+          // No .env file, that's fine
+        }
+      }
 
       try {
         // Ensure network and volume

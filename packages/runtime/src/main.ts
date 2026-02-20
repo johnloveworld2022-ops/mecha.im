@@ -2,7 +2,20 @@
  * Container entrypoint — starts the Fastify runtime server.
  */
 import { createServer } from "./server.js";
+import { mkdirSync, writeFileSync, existsSync } from "node:fs";
+import { join } from "node:path";
 import type { MechaId } from "@mecha/core";
+
+// Ensure Claude onboarding flag exists (tmpfs at /home/mecha wipes baked-in files)
+const homeDir = process.env["HOME"] ?? "/home/mecha";
+const claudeJson = join(homeDir, ".claude.json");
+const claudeDir = join(homeDir, ".claude");
+if (!existsSync(claudeJson)) {
+  writeFileSync(claudeJson, '{"hasCompletedOnboarding": true}\n');
+}
+if (!existsSync(claudeDir)) {
+  mkdirSync(claudeDir, { recursive: true });
+}
 
 const mechaId = process.env["MECHA_ID"] as MechaId;
 if (!mechaId) {
