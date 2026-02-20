@@ -17,6 +17,8 @@ export interface ServerOptions {
   agent?: Omit<AgentOptions, "mechaId">;
   /** Auth token — if omitted, one is generated and logged */
   authToken?: string;
+  /** OTP shared secret for browser-friendly access */
+  otp?: string;
   /** Skip auth middleware (for testing) */
   skipAuth?: boolean;
 }
@@ -30,7 +32,7 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   if (!opts.skipAuth) {
     const token = opts.authToken ?? generateToken();
     if (!opts.authToken) app.addHook("onReady", () => app.log.info(`Auth token: ${token}`));
-    app.addHook("preHandler", createAuthMiddleware(token));
+    app.addHook("preHandler", createAuthMiddleware(token, opts.otp));
   }
 
   app.get("/healthz", async (_req, reply) => reply.send({ status: "ok", uptime: getUptime() }));

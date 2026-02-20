@@ -73,6 +73,12 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
         await ensureVolume(dockerClient, vName);
 
         // Create and start container
+        // Pass OTP to container if configured
+        const extraEnv: string[] = [];
+        if (process.env["MECHA_OTP"]) {
+          extraEnv.push(`MECHA_OTP=${process.env["MECHA_OTP"]}`);
+        }
+
         await createContainer(dockerClient, {
           containerName: cName,
           image: DEFAULTS.IMAGE,
@@ -80,6 +86,7 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
           projectPath,
           volumeName: vName,
           hostPort,
+          env: extraEnv.length > 0 ? extraEnv : undefined,
         });
         await startContainer(dockerClient, cName);
 
