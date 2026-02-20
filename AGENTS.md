@@ -4,7 +4,20 @@
 
 ## Guidelines
 
-<!-- Add your project-specific instructions here -->
+### CLI-First Development (Mandatory)
+
+Every new feature follows this strict pipeline: **CLI → Test → GUI**
+
+1. **CLI First** — Implement in `packages/cli/src/commands/` using `CommandDeps` DI pattern
+2. **Test Next** — Write tests in `packages/cli/__tests__/`, meet coverage gates (100%)
+3. **Verify Gates** — `pnpm test` + `pnpm test:coverage` + `pnpm typecheck` must all pass
+4. **GUI Last** — Only then add dashboard/ui components as thin wrappers over shared logic
+
+Use `/cli-first-dev` skill to guide implementation of any new feature.
+
+Rules enforcing this pattern:
+- `.claude/rules/cli-first.md` — Global enforcement on all TS/TSX files
+- `.claude/rules/no-gui-without-cli.md` — Blocks GUI-only features in dashboard/ui
 
 ## Shared Memory
 
