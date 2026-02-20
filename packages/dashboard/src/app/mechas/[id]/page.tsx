@@ -7,6 +7,7 @@ import { notFound } from "next/navigation";
 import Link from "next/link";
 import { LogViewer } from "@/components/LogViewer";
 import { MechaChat } from "@/components/MechaChat";
+import { MechaSettings } from "@/components/MechaSettings";
 
 export default async function MechaDetailPage({
   params,
@@ -86,6 +87,19 @@ export default async function MechaDetailPage({
           value={state?.Pid ? String(state.Pid) : "—"}
         />
       </div>
+
+      {/* Settings */}
+      <section style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Settings</h2>
+        <div style={{
+          padding: "16px",
+          borderRadius: "8px",
+          backgroundColor: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+        }}>
+          <MechaSettings mechaId={id} />
+        </div>
+      </section>
 
       {/* Chat with mecha */}
       {isRunning && (
