@@ -3,6 +3,27 @@ import { McpServer } from "@modelcontextprotocol/sdk/server/mcp.js";
 import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/streamableHttp.js";
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
+import { resolve, relative } from "node:path";
+
+const WORKSPACE_ROOT = "/workspace";
+const MAX_SESSIONS = 100;
+const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
+
+/**
+ * Resolve a user-provided path safely within /workspace.
+ * Rejects absolute paths and parent traversal attempts.
+ */
+function safePath(userPath: string): string {
+  const resolved = resolve(WORKSPACE_ROOT, userPath);
+  const rel = relative(WORKSPACE_ROOT, resolved);
+  if (rel.startsWith("..") || resolve("/", rel) !== resolve("/", rel)) {
+    throw new Error("Path traversal detected: access denied");
+  }
+  if (!resolved.startsWith(WORKSPACE_ROOT)) {
+    throw new Error("Path traversal detected: access denied");
+  }
+  return resolved;
+}
 
 export interface McpServerHandle {
   mcpServer: McpServer;
@@ -31,7 +52,18 @@ export function registerMcpRoutes(
   app: FastifyInstance,
   handle: McpServerHandle,
 ): void {
-  const sessions = new Map<string, StreamableHTTPServerTransport>();
+  const sessions = new Map<string, { transport: StreamableHTTPServerTransport; lastAccess: number }>();
+
+  // Periodic cleanup of idle sessions
+  const cleanupTimer = setInterval(() => {
+    const now = Date.now();
+    for (const [sid, entry] of sessions) {
+      if (now - entry.lastAccess > SESSION_TTL_MS) {
+        sessions.delete(sid);
+      }
+    }
+  }, 60_000);
+  cleanupTimer.unref();
 
   // POST /mcp — main MCP endpoint
   app.post("/mcp", async (req, reply) => {
@@ -40,8 +72,15 @@ export function registerMcpRoutes(
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && sessions.has(sessionId)) {
-      transport = sessions.get(sessionId)!;
+      const entry = sessions.get(sessionId)!;
+      entry.lastAccess = Date.now();
+      transport = entry.transport;
     } else {
+      // Enforce session cap
+      if (sessions.size >= MAX_SESSIONS) {
+        return reply.code(429).send({ error: "Too many active sessions" });
+      }
+
       // New session
       transport = new StreamableHTTPServerTransport({
         sessionIdGenerator: () => randomUUID(),
@@ -52,7 +91,7 @@ export function registerMcpRoutes(
       // Extract session ID from transport after connect
       const newSessionId = transport.sessionId;
       if (newSessionId) {
-        sessions.set(newSessionId, transport);
+        sessions.set(newSessionId, { transport, lastAccess: Date.now() });
         transport.onclose = () => {
           sessions.delete(newSessionId);
         };
@@ -73,8 +112,9 @@ export function registerMcpRoutes(
       return reply.code(400).send({ error: "Invalid or missing session ID" });
     }
 
-    const transport = sessions.get(sessionId)!;
-    await transport.handleRequest(req.raw, reply.raw);
+    const entry = sessions.get(sessionId)!;
+    entry.lastAccess = Date.now();
+    await entry.transport.handleRequest(req.raw, reply.raw);
     reply.hijack();
   });
 
@@ -85,8 +125,8 @@ export function registerMcpRoutes(
       return reply.code(404).send({ error: "Session not found" });
     }
 
-    const transport = sessions.get(sessionId)!;
-    await transport.handleRequest(req.raw, reply.raw);
+    const entry = sessions.get(sessionId)!;
+    await entry.transport.handleRequest(req.raw, reply.raw);
     reply.hijack();
   });
 }
@@ -120,7 +160,15 @@ function registerDefaultTools(mcpServer: McpServer): void {
     { path: z.string().optional().describe("Subdirectory path within /workspace") },
     async ({ path }) => {
       const { readdir } = await import("node:fs/promises");
-      const targetPath = path ? `/workspace/${path}` : "/workspace";
+      let targetPath: string;
+      try {
+        targetPath = path ? safePath(path) : WORKSPACE_ROOT;
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: "Error: path traversal denied" }],
+          isError: true,
+        };
+      }
       try {
         const entries = await readdir(targetPath, { withFileTypes: true });
         const items = entries.map((e) => ({
@@ -147,8 +195,17 @@ function registerDefaultTools(mcpServer: McpServer): void {
     { path: z.string().describe("File path relative to /workspace") },
     async ({ path: filePath }) => {
       const { readFile } = await import("node:fs/promises");
+      let resolvedPath: string;
       try {
-        const content = await readFile(`/workspace/${filePath}`, "utf-8");
+        resolvedPath = safePath(filePath);
+      } catch {
+        return {
+          content: [{ type: "text" as const, text: "Error: path traversal denied" }],
+          isError: true,
+        };
+      }
+      try {
+        const content = await readFile(resolvedPath, "utf-8");
         return {
           content: [{ type: "text" as const, text: content }],
         };
@@ -157,7 +214,7 @@ function registerDefaultTools(mcpServer: McpServer): void {
           content: [
             {
               type: "text" as const,
-              text: `Error: cannot read /workspace/${filePath}`,
+              text: `Error: cannot read ${filePath}`,
             },
           ],
           isError: true,

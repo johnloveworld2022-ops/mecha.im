@@ -11,7 +11,11 @@ export function startHeartbeat(
   );
 
   const write = () => {
-    stmt.run(mechaId, "running", 0);
+    try {
+      stmt.run(mechaId, "running", 0);
+    } catch (err) {
+      console.error("Heartbeat write failed:", err instanceof Error ? err.message : err);
+    }
   };
 
   // Write initial heartbeat immediately

@@ -10,16 +10,37 @@ export interface DockerClient {
 }
 
 /**
- * Resolve the Docker socket path by checking:
+ * Parse a Docker host URI into Dockerode options.
+ * Supports unix://, tcp://, http://, https:// schemes.
+ */
+function parseDockerHost(host: string): Dockerode.DockerOptions {
+  if (host.startsWith("unix://")) {
+    return { socketPath: host.replace(/^unix:\/\//, "") };
+  }
+  if (host.startsWith("tcp://") || host.startsWith("http://") || host.startsWith("https://")) {
+    const url = new URL(host.replace(/^tcp:\/\//, "http://"));
+    const protocol = host.startsWith("https://") ? "https" : "http";
+    return {
+      host: url.hostname,
+      port: url.port ? Number(url.port) : (protocol === "https" ? 2376 : 2375),
+      protocol,
+    };
+  }
+  // Assume it's a socket path
+  return { socketPath: host };
+}
+
+/**
+ * Resolve Docker connection options by checking:
  * 1. DOCKER_HOST env var
  * 2. Docker context (docker context inspect)
- * 3. Common socket paths (default, Colima, Rancher, Podman)
+ * 3. Common socket paths (default, OrbStack, Colima, Rancher, Podman)
  */
-function resolveSocketPath(): string | undefined {
+function resolveDockerOpts(): Dockerode.DockerOptions | undefined {
   // 1. DOCKER_HOST env var
   const dockerHost = process.env["DOCKER_HOST"];
   if (dockerHost) {
-    return dockerHost.replace(/^unix:\/\//, "");
+    return parseDockerHost(dockerHost);
   }
 
   // 2. Docker context
@@ -29,7 +50,7 @@ function resolveSocketPath(): string | undefined {
       { encoding: "utf-8", timeout: 5000, stdio: ["pipe", "pipe", "pipe"] },
     ).trim();
     if (host) {
-      return host.replace(/^unix:\/\//, "");
+      return parseDockerHost(host);
     }
   } catch {
     // docker CLI not available or context not set
@@ -45,7 +66,7 @@ function resolveSocketPath(): string | undefined {
   ];
   for (const sock of candidates) {
     if (existsSync(sock)) {
-      return sock;
+      return { socketPath: sock };
     }
   }
 
@@ -55,10 +76,7 @@ function resolveSocketPath(): string | undefined {
 /** Create a Dockerode client instance */
 export function createDockerClient(opts?: Dockerode.DockerOptions): DockerClient {
   if (!opts) {
-    const socketPath = resolveSocketPath();
-    if (socketPath) {
-      opts = { socketPath };
-    }
+    opts = resolveDockerOpts();
   }
   const docker = new Dockerode(opts);
   return { docker };

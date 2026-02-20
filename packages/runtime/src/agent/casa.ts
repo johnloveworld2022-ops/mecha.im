@@ -58,7 +58,9 @@ export function registerAgentRoutes(
           cwd: agentOpts.workingDirectory ?? "/workspace",
           permissionMode: agentOpts.permissionMode === "full-auto"
             ? "acceptEdits"
-            : "default",
+            : agentOpts.permissionMode === "plan"
+              ? "plan"
+              : "default",
         },
       });
 

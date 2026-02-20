@@ -27,8 +27,9 @@ export function registerMcpCommand(parent: Command, deps: CommandDeps): void {
         }
 
         const endpoint = `http://127.0.0.1:${hostPort}/mcp`;
-        // Token is derived from the mecha ID for now
-        const token = id;
+        // TODO: Retrieve the real auth token from the runtime (stored in state volume)
+        // For now, instruct the user to check container logs for the generated token
+        const token = "(check container logs for auth token)";
 
         if (jsonMode) {
           formatter.json({ endpoint, token });

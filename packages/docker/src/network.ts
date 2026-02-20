@@ -1,4 +1,5 @@
 import type { DockerClient } from "./client.js";
+import { isNotFoundError } from "./utils.js";
 
 /** Ensure a Docker network exists (idempotent) */
 export async function ensureNetwork(
@@ -28,10 +29,3 @@ export async function removeNetwork(
   }
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    "statusCode" in err &&
-    (err as { statusCode: number }).statusCode === 404
-  );
-}

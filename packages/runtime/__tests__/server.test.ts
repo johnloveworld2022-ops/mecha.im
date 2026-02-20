@@ -12,7 +12,7 @@ describe("Fastify server", () => {
   });
 
   it("GET /healthz returns 200 with status and uptime", async () => {
-    app = createServer({ mechaId: TEST_ID, skipMcp: true });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
     const res = await app.inject({ method: "GET", url: "/healthz" });
 
     expect(res.statusCode).toBe(200);
@@ -22,7 +22,7 @@ describe("Fastify server", () => {
   });
 
   it("GET /info returns mecha info", async () => {
-    app = createServer({ mechaId: TEST_ID, version: "1.2.3", skipMcp: true });
+    app = createServer({ mechaId: TEST_ID, version: "1.2.3", skipMcp: true, skipAuth: true });
     const res = await app.inject({ method: "GET", url: "/info" });
 
     expect(res.statusCode).toBe(200);
@@ -34,7 +34,7 @@ describe("Fastify server", () => {
   });
 
   it("POST /api/chat returns 400 without message", async () => {
-    app = createServer({ mechaId: TEST_ID, skipMcp: true });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
     const res = await app.inject({
       method: "POST",
       url: "/api/chat",
@@ -47,7 +47,7 @@ describe("Fastify server", () => {
   });
 
   it("POST /api/chat returns 503 when agent not configured", async () => {
-    app = createServer({ mechaId: TEST_ID, skipMcp: true });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
     const res = await app.inject({
       method: "POST",
       url: "/api/chat",
@@ -60,7 +60,7 @@ describe("Fastify server", () => {
   });
 
   it("graceful shutdown closes the server", async () => {
-    app = createServer({ mechaId: TEST_ID, skipMcp: true });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
     await app.ready();
     await app.close();
     // After close, inject should throw or fail

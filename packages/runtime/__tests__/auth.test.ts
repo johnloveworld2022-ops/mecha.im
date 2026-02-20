@@ -28,8 +28,7 @@ describe("Auth middleware", () => {
   });
 
   function makeApp() {
-    app = createServer({ mechaId: TEST_ID });
-    app.addHook("preHandler", createAuthMiddleware(token));
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, authToken: token });
     return app;
   }
 

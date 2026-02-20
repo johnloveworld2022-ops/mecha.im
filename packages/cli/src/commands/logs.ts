@@ -11,7 +11,6 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
     .option("-f, --follow", "Follow log output")
     .option("-n, --tail <lines>", "Number of lines to show from the end", "100")
     .option("--since <time>", "Show logs since timestamp or relative time")
-    .option("--component <name>", "Filter by component (unused, reserved)")
     .action(
       async (
         id: string,
@@ -19,15 +18,25 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
           follow?: boolean;
           tail: string;
           since?: string;
-          component?: string;
         },
       ) => {
         const { dockerClient, formatter } = deps;
         const cName = containerName(id as MechaId);
         const tail = parseInt(cmdOpts.tail, 10);
-        const since = cmdOpts.since
-          ? Math.floor(new Date(cmdOpts.since).getTime() / 1000)
-          : undefined;
+        if (!Number.isInteger(tail) || tail < 0) {
+          formatter.error(`Invalid --tail value: ${cmdOpts.tail}`);
+          process.exitCode = 1;
+          return;
+        }
+        let since: number | undefined;
+        if (cmdOpts.since) {
+          since = Math.floor(new Date(cmdOpts.since).getTime() / 1000);
+          if (Number.isNaN(since)) {
+            formatter.error(`Invalid --since value: ${cmdOpts.since}`);
+            process.exitCode = 1;
+            return;
+          }
+        }
 
         try {
           const stream = await getContainerLogs(dockerClient, cName, {

@@ -47,14 +47,15 @@ export function registerStatusCommand(
       };
 
       if (cmdOpts.watch) {
-        const interval = setInterval(() => {
-          void printStatus();
-        }, 2000);
+        let stopped = false;
         process.on("SIGINT", () => {
-          clearInterval(interval);
+          stopped = true;
           process.exit(0);
         });
-        await printStatus();
+        while (!stopped) {
+          await printStatus();
+          await new Promise((r) => setTimeout(r, 2000));
+        }
       } else {
         await printStatus();
       }

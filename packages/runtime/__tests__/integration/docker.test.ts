@@ -15,6 +15,7 @@ const SKIP = false;
 const IMAGE_NAME = "mecha-runtime:test";
 const CONTAINER_NAME = "mecha-runtime-integration-test";
 const HOST_PORT = 7799;
+const AUTH_TOKEN = "test-integration-token-1234567890";
 
 function run(cmd: string): string {
   return execSync(cmd, { encoding: "utf-8", timeout: 120_000 }).trim();
@@ -32,8 +33,10 @@ describe.skipIf(SKIP)("Docker image integration", () => {
     run(
       `docker run -d --name ${CONTAINER_NAME} -p ${HOST_PORT}:3000 ` +
         `-e MECHA_ID=mx-test-integration ` +
+        `-e MECHA_AUTH_TOKEN=${AUTH_TOKEN} ` +
         `--read-only --tmpfs /tmp:rw,noexec,nosuid ` +
         `--tmpfs /var/lib/mecha:rw ` +
+        `--tmpfs /home/mecha:rw,nosuid,size=64m,uid=1000,gid=1000 ` +
         `${IMAGE_NAME}`,
     );
 
@@ -80,7 +83,9 @@ describe.skipIf(SKIP)("Docker image integration", () => {
   });
 
   it("/info returns runtime info", async () => {
-    const res = await fetch(`http://localhost:${HOST_PORT}/info`);
+    const res = await fetch(`http://localhost:${HOST_PORT}/info`, {
+      headers: { Authorization: `Bearer ${AUTH_TOKEN}` },
+    });
     expect(res.status).toBe(200);
     const body = await res.json();
     expect(body.state).toBe("running");

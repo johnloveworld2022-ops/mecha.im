@@ -8,6 +8,7 @@ import {
 } from "@mecha/core";
 import type { MechaId } from "@mecha/core";
 import type { DockerClient } from "./client.js";
+import { isNotFoundError } from "./utils.js";
 
 export interface CreateContainerOptions {
   containerName: string;
@@ -158,6 +159,9 @@ export async function getContainerLogs(
   return Readable.from([buf]);
 }
 
+/** Maximum output size for exec (10 MB) */
+const MAX_EXEC_OUTPUT = 10 * 1024 * 1024;
+
 /** Execute a command inside a running container */
 export async function execInContainer(
   client: DockerClient,
@@ -172,15 +176,38 @@ export async function execInContainer(
   });
   const stream = await exec.start({ hijack: true, stdin: false });
 
+  // Demux stdout/stderr from Docker multiplexed stream
+  const { PassThrough } = await import("node:stream");
+  const stdout = new PassThrough();
+  const stderr = new PassThrough();
+  client.docker.modem.demuxStream(stream, stdout, stderr);
+
   return new Promise((resolve, reject) => {
     const chunks: Buffer[] = [];
-    stream.on("data", (chunk: Buffer) => chunks.push(chunk));
+    let totalSize = 0;
+    let truncated = false;
+
+    const onData = (chunk: Buffer) => {
+      if (truncated) return;
+      totalSize += chunk.length;
+      if (totalSize > MAX_EXEC_OUTPUT) {
+        truncated = true;
+        return;
+      }
+      chunks.push(chunk);
+    };
+
+    stdout.on("data", onData);
+    stderr.on("data", onData);
+
     stream.on("end", async () => {
       try {
         const inspect = await exec.inspect();
+        const output = Buffer.concat(chunks).toString("utf-8") +
+          (truncated ? "\n[output truncated]" : "");
         resolve({
           exitCode: inspect.ExitCode ?? 1,
-          output: Buffer.concat(chunks).toString("utf-8"),
+          output,
         });
       } catch (err) {
         reject(err);
@@ -190,10 +217,3 @@ export async function execInContainer(
   });
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    "statusCode" in err &&
-    (err as { statusCode: number }).statusCode === 404
-  );
-}

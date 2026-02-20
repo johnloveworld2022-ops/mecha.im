@@ -1,4 +1,5 @@
 import type { DockerClient } from "./client.js";
+import { isNotFoundError } from "./utils.js";
 
 /** Ensure a Docker volume exists (idempotent) */
 export async function ensureVolume(
@@ -28,10 +29,3 @@ export async function removeVolume(
   }
 }
 
-function isNotFoundError(err: unknown): boolean {
-  return (
-    err instanceof Error &&
-    "statusCode" in err &&
-    (err as { statusCode: number }).statusCode === 404
-  );
-}

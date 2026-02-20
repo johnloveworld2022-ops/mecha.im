@@ -39,8 +39,18 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
       const vName = volumeName(id);
       const hostPort = parseInt(cmdOpts.port, 10);
 
-      // Load .env files: project dir first, then cwd (project dir takes priority)
-      for (const dir of [process.cwd(), projectPath]) {
+      if (!Number.isInteger(hostPort) || hostPort < 1024 || hostPort > 65535) {
+        formatter.error(`Invalid port: ${cmdOpts.port} (must be 1024-65535)`);
+        process.exitCode = 1;
+        return;
+      }
+
+      // Load .env files: project dir first (takes priority), then cwd
+      // Neither overrides existing env vars (e.g. set in shell)
+      const envDirs = [projectPath, process.cwd()];
+      // Deduplicate if cwd === projectPath
+      const uniqueDirs = [...new Set(envDirs)];
+      for (const dir of uniqueDirs) {
         try {
           const envPath = join(dir, ".env");
           const envContent = await readFile(envPath, "utf-8");
