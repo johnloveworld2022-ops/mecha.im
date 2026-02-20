@@ -63,7 +63,7 @@ describe("createContainer", () => {
     expect(callArgs.Labels[LABELS.MECHA_PATH]).toBe("/home/user/project");
 
     // Verify mounts
-    expect(callArgs.HostConfig.Binds).toContain("/home/user/project:/workspace");
+    expect(callArgs.HostConfig.Binds).toContain("/home/user/project:/home/mecha");
     expect(callArgs.HostConfig.Binds).toContain("mecha-state-mx-test-abc123:/var/lib/mecha");
 
     // Verify tmpfs

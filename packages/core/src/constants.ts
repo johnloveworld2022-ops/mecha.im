@@ -23,7 +23,7 @@ export const DEFAULTS = {
 /** Mount paths inside the container */
 export const MOUNT_PATHS = {
   /** Project workspace mount point */
-  WORKSPACE: "/workspace",
+  WORKSPACE: "/home/mecha",
   /** Persistent state directory */
   STATE: "/var/lib/mecha",
   /** Temporary directory (writable) */

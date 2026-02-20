@@ -36,7 +36,6 @@ describe.skipIf(SKIP)("Docker image integration", () => {
         `-e MECHA_AUTH_TOKEN=${AUTH_TOKEN} ` +
         `--read-only --tmpfs /tmp:rw,noexec,nosuid ` +
         `--tmpfs /var/lib/mecha:rw ` +
-        `--tmpfs /home/mecha:rw,nosuid,size=64m,uid=1000,gid=1000 ` +
         `${IMAGE_NAME}`,
     );
 

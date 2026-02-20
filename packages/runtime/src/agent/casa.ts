@@ -58,7 +58,7 @@ export function registerAgentRoutes(
         prompt: body.message,
         options: {
           abortController,
-          cwd: agentOpts.workingDirectory ?? "/workspace",
+          cwd: agentOpts.workingDirectory ?? "/home/mecha",
           permissionMode: PERMISSION_MAP[agentOpts.permissionMode ?? "default"] ?? "default",
         },
       });

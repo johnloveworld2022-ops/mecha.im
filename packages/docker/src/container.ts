@@ -49,7 +49,6 @@ export async function createContainer(
       ],
       Tmpfs: {
         [MOUNT_PATHS.TMP]: "rw,noexec,nosuid,size=256m",
-        "/home/mecha": `rw,nosuid,size=256m,uid=${SECURITY.UID},gid=${SECURITY.GID}`,
       },
       NetworkMode: DEFAULTS.NETWORK,
     },

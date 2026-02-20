@@ -41,9 +41,9 @@ RUN groupmod -n mecha node && \
 RUN npm install -g @anthropic-ai/claude-code@2.1.49
 
 # Create required writable directories and Claude onboarding flag
-RUN mkdir -p /var/lib/mecha /workspace /tmp /home/mecha/.claude && \
+RUN mkdir -p /var/lib/mecha /tmp /home/mecha/.claude && \
     echo '{"hasCompletedOnboarding": true}' > /home/mecha/.claude.json && \
-    chown -R mecha:mecha /var/lib/mecha /workspace /home/mecha
+    chown -R mecha:mecha /var/lib/mecha /home/mecha
 
 WORKDIR /app
 

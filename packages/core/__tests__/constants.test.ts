@@ -21,7 +21,7 @@ describe("DEFAULTS", () => {
 
 describe("MOUNT_PATHS", () => {
   it("has workspace mount", () => {
-    expect(MOUNT_PATHS.WORKSPACE).toBe("/workspace");
+    expect(MOUNT_PATHS.WORKSPACE).toBe("/home/mecha");
   });
 
   it("has state mount", () => {

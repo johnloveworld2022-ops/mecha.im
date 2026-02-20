@@ -6,7 +6,7 @@ import { mkdirSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import type { MechaId } from "@mecha/core";
 
-// Ensure Claude onboarding flag exists (tmpfs at /home/mecha wipes baked-in files)
+// Ensure Claude onboarding flag exists in $HOME (workspace bind-mount replaces baked-in files)
 const homeDir = process.env["HOME"] ?? "/home/mecha";
 const claudeJson = join(homeDir, ".claude.json");
 const claudeDir = join(homeDir, ".claude");
@@ -37,7 +37,7 @@ const app = createServer({
   authToken: process.env["MECHA_AUTH_TOKEN"],
   otp: process.env["MECHA_OTP"],
   agent: {
-    workingDirectory: process.env["MECHA_WORKSPACE"] ?? "/workspace",
+    workingDirectory: process.env["MECHA_WORKSPACE"] ?? "/home/mecha",
     permissionMode: (process.env["MECHA_PERMISSION_MODE"] ?? "default") as "default" | "plan" | "full-auto",
   },
 });

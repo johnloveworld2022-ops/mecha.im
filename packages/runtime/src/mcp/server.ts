@@ -6,7 +6,7 @@ import { randomUUID } from "node:crypto";
 import { resolve, relative } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
 
-const WORKSPACE_ROOT = "/workspace";
+const WORKSPACE_ROOT = "/home/mecha";
 const MAX_SESSIONS = 100;
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
@@ -143,7 +143,7 @@ function registerDefaultTools(mcpServer: McpServer): void {
   mcpServer.tool(
     "mecha_workspace_list",
     "List files in the Mecha workspace",
-    { path: z.string().optional().describe("Subdirectory path within /workspace") },
+    { path: z.string().optional().describe("Subdirectory path within the workspace") },
     async ({ path }) => {
       let targetPath: string;
       try { targetPath = path ? safePath(path) : WORKSPACE_ROOT; }
@@ -158,7 +158,7 @@ function registerDefaultTools(mcpServer: McpServer): void {
   mcpServer.tool(
     "mecha_workspace_read",
     "Read a file from the Mecha workspace",
-    { path: z.string().describe("File path relative to /workspace") },
+    { path: z.string().describe("File path relative to the workspace") },
     async ({ path: filePath }) => {
       let resolvedPath: string;
       try { resolvedPath = safePath(filePath); }
