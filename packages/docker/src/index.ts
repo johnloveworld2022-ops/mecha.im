@@ -3,6 +3,7 @@ export { ensureNetwork, removeNetwork } from "./network.js";
 export { ensureVolume, removeVolume } from "./volume.js";
 export {
   createContainer,
+  getContainerPort,
   startContainer,
   stopContainer,
   removeContainer,

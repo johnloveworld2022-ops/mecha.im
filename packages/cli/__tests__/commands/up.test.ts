@@ -21,12 +21,14 @@ const mockEnsureNetwork = vi.fn().mockResolvedValue(undefined);
 const mockEnsureVolume = vi.fn().mockResolvedValue(undefined);
 const mockCreateContainer = vi.fn().mockResolvedValue({});
 const mockStartContainer = vi.fn().mockResolvedValue(undefined);
+const mockRemoveContainer = vi.fn().mockResolvedValue(undefined);
 
 vi.mock("@mecha/docker", () => ({
   ensureNetwork: (...args: unknown[]) => mockEnsureNetwork(...args),
   ensureVolume: (...args: unknown[]) => mockEnsureVolume(...args),
   createContainer: (...args: unknown[]) => mockCreateContainer(...args),
   startContainer: (...args: unknown[]) => mockStartContainer(...args),
+  removeContainer: (...args: unknown[]) => mockRemoveContainer(...args),
 }));
 
 describe("mecha up", () => {
@@ -42,6 +44,7 @@ describe("mecha up", () => {
     mockEnsureVolume.mockResolvedValue(undefined);
     mockCreateContainer.mockResolvedValue({});
     mockStartContainer.mockResolvedValue(undefined);
+    mockRemoveContainer.mockResolvedValue(undefined);
   });
 
   afterEach(() => {
@@ -149,6 +152,38 @@ describe("mecha up", () => {
     // With --show-token, should NOT have "..." truncation
     expect(authLine).toBeDefined();
     expect(authLine).not.toContain("...");
+  });
+
+  it("removes container if start fails (rollback)", async () => {
+    mockStartContainer.mockRejectedValueOnce(new Error("port already in use"));
+
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
+    const program = new Command();
+    registerUpCommand(program, deps);
+
+    await program.parseAsync(["up", tmpdir()], { from: "user" });
+
+    expect(mockCreateContainer).toHaveBeenCalledTimes(1);
+    expect(mockStartContainer).toHaveBeenCalledTimes(1);
+    expect(mockRemoveContainer).toHaveBeenCalledTimes(1);
+    expect(mockRemoveContainer).toHaveBeenCalledWith(expect.anything(), expect.stringContaining("mecha-"), true);
+    expect(formatter.error).toHaveBeenCalledWith("port already in use");
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("still reports error if rollback cleanup also fails", async () => {
+    mockStartContainer.mockRejectedValueOnce(new Error("start failed"));
+    mockRemoveContainer.mockRejectedValueOnce(new Error("remove failed"));
+
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
+    const program = new Command();
+    registerUpCommand(program, deps);
+
+    await program.parseAsync(["up", tmpdir()], { from: "user" });
+
+    // Original error is surfaced even if cleanup fails
+    expect(formatter.error).toHaveBeenCalledWith("start failed");
+    expect(process.exitCode).toBe(1);
   });
 
   it("reports docker errors", async () => {

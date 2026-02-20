@@ -11,7 +11,7 @@ function withCreationLock<T>(fn: () => Promise<T>): Promise<T> {
   return prev.then(fn).finally(() => resolve!());
 }
 import { NextResponse, type NextRequest } from "next/server";
-import { listMechaContainers, createContainer, startContainer, ensureNetwork, ensureVolume } from "@mecha/docker";
+import { listMechaContainers, createContainer, startContainer, removeContainer, ensureNetwork, ensureVolume } from "@mecha/docker";
 import { computeMechaId, containerName, volumeName, networkName, DEFAULTS, LABELS } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { withAuth } from "@/lib/api-auth";
@@ -147,7 +147,12 @@ export const POST = withAuth(async (request: NextRequest) => {
       env: containerEnv,
     });
 
-    await startContainer(client, cName);
+    try {
+      await startContainer(client, cName);
+    } catch (startErr) {
+      try { await removeContainer(client, cName, true); } catch { /* best effort cleanup */ }
+      throw startErr;
+    }
 
     return NextResponse.json({ id, name: cName, port: hostPort }, { status: 201 });
   });

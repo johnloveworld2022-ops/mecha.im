@@ -13,6 +13,7 @@ import {
   ensureVolume,
   createContainer,
   startContainer,
+  removeContainer,
 } from "@mecha/docker";
 import { randomBytes } from "node:crypto";
 import { stat, readFile } from "node:fs/promises";
@@ -108,7 +109,12 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
           hostPort,
           env: extraEnv,
         });
-        await startContainer(dockerClient, cName);
+        try {
+          await startContainer(dockerClient, cName);
+        } catch (startErr) {
+          try { await removeContainer(dockerClient, cName, true); } catch { /* best effort cleanup */ }
+          throw startErr;
+        }
 
         formatter.success(`Mecha started successfully.`);
         formatter.info(`  ID:   ${id}`);

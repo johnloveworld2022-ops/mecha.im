@@ -121,7 +121,18 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
     .filter(([k]) => k !== "MECHA_ID")
     .map(([k, v]) => `${k}=${v}`);
 
-  // Recreate container: stop → remove → create → start
+  // Save original config for rollback
+  const originalOpts = {
+    containerName: name,
+    image: info.Config?.Image ?? DEFAULTS.IMAGE,
+    mechaId,
+    projectPath,
+    volumeName: vName,
+    hostPort,
+    env: (info.Config?.Env ?? []).filter((e: string) => !e.startsWith("MECHA_ID=")),
+  };
+
+  // Recreate container: stop → remove → create → start (with rollback)
   try {
     await stopContainer(client, name);
   } catch (err) {
@@ -133,19 +144,36 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
     }
   }
 
-  await removeContainer(client, name, true);
-
-  await createContainer(client, {
-    containerName: name,
-    image: DEFAULTS.IMAGE,
-    mechaId,
-    projectPath,
-    volumeName: vName,
-    hostPort,
-    env: newEnv,
-  });
-
-  await startContainer(client, name);
+  try {
+    await removeContainer(client, name, true);
+    await createContainer(client, {
+      containerName: name,
+      image: DEFAULTS.IMAGE,
+      mechaId,
+      projectPath,
+      volumeName: vName,
+      hostPort,
+      env: newEnv,
+    });
+    try {
+      await startContainer(client, name);
+    } catch (startErr) {
+      // Start failed: remove new container, restore original
+      try { await removeContainer(client, name, true); } catch { /* best effort */ }
+      await createContainer(client, originalOpts);
+      await startContainer(client, name);
+      throw startErr;
+    }
+  } catch (err) {
+    // If we got here from the outer catch (remove/create failed), try rollback
+    if (!(err instanceof Error && err.message?.includes("start"))) {
+      try {
+        await createContainer(client, originalOpts);
+        await startContainer(client, name);
+      } catch { /* rollback also failed — surface original error */ }
+    }
+    throw err;
+  }
 
   return NextResponse.json({ ok: true });
 });

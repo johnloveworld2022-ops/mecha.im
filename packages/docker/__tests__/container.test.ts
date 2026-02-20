@@ -2,6 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { PassThrough } from "node:stream";
 import {
   createContainer,
+  getContainerPort,
   startContainer,
   stopContainer,
   removeContainer,
@@ -73,6 +74,37 @@ describe("createContainer", () => {
     expect(callArgs.HostConfig.PortBindings["3000/tcp"][0].HostIp).toBe("127.0.0.1");
   });
 
+  it("uses empty string for HostPort when hostPort is omitted", async () => {
+    (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
+
+    await createContainer(client, {
+      containerName: "mecha-mx-test-abc123",
+      image: "mecha-runtime:latest",
+      mechaId: "mx-test-abc123" as MechaId,
+      projectPath: "/home/user/project",
+      volumeName: "mecha-state-mx-test-abc123",
+    });
+
+    const callArgs = (client.docker.createContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.HostConfig.PortBindings["3000/tcp"][0].HostPort).toBe("");
+  });
+
+  it("uses explicit port when hostPort is provided", async () => {
+    (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
+
+    await createContainer(client, {
+      containerName: "mecha-mx-test-abc123",
+      image: "mecha-runtime:latest",
+      mechaId: "mx-test-abc123" as MechaId,
+      projectPath: "/home/user/project",
+      volumeName: "mecha-state-mx-test-abc123",
+      hostPort: 8080,
+    });
+
+    const callArgs = (client.docker.createContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.HostConfig.PortBindings["3000/tcp"][0].HostPort).toBe("8080");
+  });
+
   it("includes custom env vars", async () => {
     (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
 
@@ -89,6 +121,48 @@ describe("createContainer", () => {
     const callArgs = (client.docker.createContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
     expect(callArgs.Env).toContain("MECHA_ID=mx-test-abc123");
     expect(callArgs.Env).toContain("FOO=bar");
+  });
+});
+
+describe("getContainerPort", () => {
+  it("returns port from inspect data", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: {
+          Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "7700" }] },
+        },
+      }),
+    });
+
+    const port = await getContainerPort(client, "mecha-mx-test");
+    expect(port).toBe(7700);
+  });
+
+  it("returns undefined when no port bindings exist", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: { Ports: {} },
+      }),
+    });
+
+    const port = await getContainerPort(client, "mecha-mx-test");
+    expect(port).toBeUndefined();
+  });
+
+  it("returns undefined when HostPort is empty string", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: {
+          Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "" }] },
+        },
+      }),
+    });
+
+    const port = await getContainerPort(client, "mecha-mx-test");
+    expect(port).toBeUndefined();
   });
 });
 

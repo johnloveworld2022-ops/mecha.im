@@ -11,7 +11,7 @@ export interface CreateContainerOptions {
   mechaId: MechaId;
   projectPath: string;
   volumeName: string;
-  hostPort: number;
+  hostPort?: number;
   env?: string[];
 }
 
@@ -40,7 +40,7 @@ export async function createContainer(
       UsernsMode: "",
       PortBindings: {
         [`${DEFAULTS.CONTAINER_PORT}/tcp`]: [
-          { HostIp: "127.0.0.1", HostPort: String(opts.hostPort) },
+          { HostIp: "127.0.0.1", HostPort: opts.hostPort ? String(opts.hostPort) : "" },
         ],
       },
       Binds: [
@@ -54,6 +54,14 @@ export async function createContainer(
     },
     User: `${SECURITY.UID}:${SECURITY.GID}`,
   });
+}
+
+/** Get the host port assigned to a running container (from inspect data) */
+export async function getContainerPort(client: DockerClient, name: string): Promise<number | undefined> {
+  const info = await inspectContainer(client, name);
+  const bindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
+  const portStr = bindings?.[0]?.HostPort;
+  return portStr ? parseInt(portStr, 10) : undefined;
 }
 
 export async function startContainer(client: DockerClient, name: string): Promise<void> {
