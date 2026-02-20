@@ -1,6 +1,6 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { MechaId, MechaState } from "@mecha/core";
-import { registerMcpRoutes } from "./mcp/server.js";
+import { createMcpServer, registerMcpRoutes } from "./mcp/server.js";
 import { registerAgentRoutes } from "./agent/casa.js";
 
 export interface ServerOptions {
@@ -10,6 +10,8 @@ export interface ServerOptions {
   version?: string;
   /** Logger configuration */
   logger?: boolean;
+  /** Skip MCP server setup (for testing) */
+  skipMcp?: boolean;
 }
 
 export function createServer(opts: ServerOptions): FastifyInstance {
@@ -35,7 +37,10 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   });
 
   // --- register sub-routes ---
-  registerMcpRoutes(app);
+  if (!opts.skipMcp) {
+    const mcpHandle = createMcpServer(opts.mechaId);
+    registerMcpRoutes(app, mcpHandle);
+  }
   registerAgentRoutes(app);
 
   // --- graceful shutdown ---

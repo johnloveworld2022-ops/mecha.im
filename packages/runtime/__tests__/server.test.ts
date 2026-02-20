@@ -12,7 +12,7 @@ describe("Fastify server", () => {
   });
 
   it("GET /healthz returns 200 with status and uptime", async () => {
-    app = createServer({ mechaId: TEST_ID });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true });
     const res = await app.inject({ method: "GET", url: "/healthz" });
 
     expect(res.statusCode).toBe(200);
@@ -22,7 +22,7 @@ describe("Fastify server", () => {
   });
 
   it("GET /info returns mecha info", async () => {
-    app = createServer({ mechaId: TEST_ID, version: "1.2.3" });
+    app = createServer({ mechaId: TEST_ID, version: "1.2.3", skipMcp: true });
     const res = await app.inject({ method: "GET", url: "/info" });
 
     expect(res.statusCode).toBe(200);
@@ -33,22 +33,15 @@ describe("Fastify server", () => {
     expect(typeof body.uptime).toBe("number");
   });
 
-  it("POST /mcp returns 501 stub", async () => {
-    app = createServer({ mechaId: TEST_ID });
-    const res = await app.inject({ method: "POST", url: "/mcp" });
-
-    expect(res.statusCode).toBe(501);
-  });
-
   it("POST /api/chat returns 501 stub", async () => {
-    app = createServer({ mechaId: TEST_ID });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true });
     const res = await app.inject({ method: "POST", url: "/api/chat" });
 
     expect(res.statusCode).toBe(501);
   });
 
   it("graceful shutdown closes the server", async () => {
-    app = createServer({ mechaId: TEST_ID });
+    app = createServer({ mechaId: TEST_ID, skipMcp: true });
     await app.ready();
     await app.close();
     // After close, inject should throw or fail
