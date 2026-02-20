@@ -11,7 +11,7 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync } from "node:child_process";
 
-const SKIP = !process.env["MECHA_INTEGRATION"];
+const SKIP = false;
 const IMAGE_NAME = "mecha-runtime:test";
 const CONTAINER_NAME = "mecha-runtime-integration-test";
 const HOST_PORT = 7799;

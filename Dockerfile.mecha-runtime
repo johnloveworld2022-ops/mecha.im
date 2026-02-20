@@ -23,20 +23,19 @@ COPY packages/runtime/src ./packages/runtime/src
 RUN pnpm --filter @mecha/core build && pnpm --filter @mecha/runtime build
 
 # Prune dev dependencies for production
-RUN pnpm --filter @mecha/runtime --prod deploy /app
+RUN pnpm --filter @mecha/runtime --prod deploy --legacy /app
 
 # ---- Production Stage ----
 FROM node:20-slim AS production
 
-# Security: no sudo available
+# Security: install tini, rename existing node user to mecha
 RUN apt-get update && apt-get install -y --no-install-recommends \
     tini \
-    && rm -rf /var/lib/apt/lists/* \
-    && deluser --remove-home node || true
+    && rm -rf /var/lib/apt/lists/*
 
-# Create non-root user matching SECURITY.UID/GID
-RUN groupadd -g 1000 mecha && \
-    useradd -u 1000 -g mecha -m -s /bin/sh mecha
+# Rename the existing node user/group (uid=1000, gid=1000) to mecha
+RUN groupmod -n mecha node && \
+    usermod -l mecha -d /home/mecha -m node
 
 # Create required writable directories
 RUN mkdir -p /var/lib/mecha /workspace /tmp && \
@@ -57,4 +56,4 @@ EXPOSE 3000
 ENTRYPOINT ["tini", "--"]
 
 # Start the runtime server
-CMD ["node", "dist/index.js"]
+CMD ["node", "dist/main.js"]
