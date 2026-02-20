@@ -49,9 +49,13 @@ function createMechaAdapter(mechaId: string): ChatModelAdapter {
 
           try {
             const event = JSON.parse(trimmed.slice(6));
-            const text = extractText(event);
-            if (text) {
-              fullText += text;
+            const result = extractText(event);
+            if (result) {
+              if (result.mode === "full") {
+                fullText = result.text;
+              } else {
+                fullText += result.text;
+              }
               yield { content: [{ type: "text" as const, text: fullText }] };
             }
           } catch {
@@ -63,16 +67,31 @@ function createMechaAdapter(mechaId: string): ChatModelAdapter {
   };
 }
 
-function extractText(event: Record<string, unknown>): string | null {
+type ExtractResult = { mode: "full" | "delta"; text: string } | null;
+
+function extractText(event: Record<string, unknown>): ExtractResult {
+  // Claude Code SSE: {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
+  // This sends the full accumulated text each time, so use "full" mode to replace
+  if (event.type === "assistant") {
+    const msg = event.message as Record<string, unknown> | undefined;
+    if (msg && Array.isArray(msg.content)) {
+      const texts = (msg.content as Array<Record<string, unknown>>)
+        .filter((c) => c.type === "text" && typeof c.text === "string")
+        .map((c) => c.text as string);
+      if (texts.length > 0) return { mode: "full", text: texts.join("") };
+    }
+  }
+  // Anthropic streaming: content_block_delta (incremental)
   if (event.type === "content_block_delta") {
     const delta = event.delta as Record<string, unknown> | undefined;
-    if (delta?.type === "text_delta" && typeof delta.text === "string") return delta.text;
+    if (delta?.type === "text_delta" && typeof delta.text === "string") return { mode: "delta", text: delta.text };
   }
-  if (event.type === "text" && typeof event.text === "string") return event.text;
+  if (event.type === "text" && typeof event.text === "string") return { mode: "delta", text: event.text };
+  // OpenAI-style (incremental)
   if (Array.isArray(event.choices)) {
     const choice = (event.choices as Array<Record<string, unknown>>)[0];
     const delta = choice?.delta as Record<string, unknown> | undefined;
-    if (typeof delta?.content === "string") return delta.content;
+    if (typeof delta?.content === "string") return { mode: "delta", text: delta.content };
   }
   return null;
 }
