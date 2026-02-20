@@ -4,14 +4,10 @@ import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockEnsureNetwork = vi.fn();
+const mockMechaInit = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  ensureNetwork: (...args: unknown[]) => mockEnsureNetwork(...args),
-}));
-
-vi.mock("node:fs/promises", () => ({
-  mkdir: vi.fn().mockResolvedValue(undefined),
+vi.mock("@mecha/service", () => ({
+  mechaInit: (...args: unknown[]) => mockMechaInit(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -27,7 +23,7 @@ describe("mecha init", () => {
     deps = { dockerClient: { docker: {} } as any, formatter };
     process.exitCode = undefined;
     vi.clearAllMocks();
-    mockEnsureNetwork.mockResolvedValue(undefined);
+    mockMechaInit.mockResolvedValue(undefined);
   });
 
   it("creates network and config directory", async () => {
@@ -35,12 +31,12 @@ describe("mecha init", () => {
     registerInitCommand(program, deps);
     await program.parseAsync(["init"], { from: "user" });
 
-    expect(mockEnsureNetwork).toHaveBeenCalled();
+    expect(mockMechaInit).toHaveBeenCalledWith(deps.dockerClient);
     expect(formatter.success).toHaveBeenCalledWith(expect.stringContaining("initialized"));
   });
 
-  it("reports error when network creation fails", async () => {
-    mockEnsureNetwork.mockRejectedValueOnce(new Error("network failed"));
+  it("reports error when init fails", async () => {
+    mockMechaInit.mockRejectedValueOnce(new Error("network failed"));
 
     const program = new Command();
     registerInitCommand(program, deps);
@@ -51,14 +47,13 @@ describe("mecha init", () => {
   });
 
   it("reports error when mkdir fails", async () => {
-    const { mkdir } = await import("node:fs/promises");
-    vi.mocked(mkdir).mockRejectedValueOnce(new Error("permission denied"));
+    mockMechaInit.mockRejectedValueOnce(new Error("permission denied"));
 
     const program = new Command();
     registerInitCommand(program, deps);
     await program.parseAsync(["init"], { from: "user" });
 
-    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("config directory"));
+    expect(formatter.error).toHaveBeenCalledWith("permission denied");
     expect(process.exitCode).toBe(1);
   });
 });

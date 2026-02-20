@@ -4,10 +4,10 @@ import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockInspectContainer = vi.fn();
+const mockResolveMcpEndpoint = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  inspectContainer: (...args: unknown[]) => mockInspectContainer(...args),
+vi.mock("@mecha/service", () => ({
+  resolveMcpEndpoint: (...args: unknown[]) => mockResolveMcpEndpoint(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -26,8 +26,9 @@ describe("mecha mcp", () => {
   });
 
   it("prints endpoint and token info", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
+    mockResolveMcpEndpoint.mockResolvedValue({
+      endpoint: "http://127.0.0.1:7700/mcp",
+      note: "check container logs for auth token",
     });
 
     const program = new Command();
@@ -38,8 +39,9 @@ describe("mecha mcp", () => {
   });
 
   it("outputs JSON when --json flag is set", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
+    mockResolveMcpEndpoint.mockResolvedValue({
+      endpoint: "http://127.0.0.1:7700/mcp",
+      note: "check container logs for auth token",
     });
 
     const program = new Command();
@@ -53,9 +55,7 @@ describe("mecha mcp", () => {
   });
 
   it("errors when no port binding", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": null } },
-    });
+    mockResolveMcpEndpoint.mockRejectedValueOnce(new Error("No port binding for mx-test-abc123"));
 
     const program = new Command();
     registerMcpCommand(program, deps);
@@ -66,7 +66,7 @@ describe("mecha mcp", () => {
   });
 
   it("reports errors on inspect failure", async () => {
-    mockInspectContainer.mockRejectedValueOnce(new Error("not found"));
+    mockResolveMcpEndpoint.mockRejectedValueOnce(new Error("not found"));
 
     const program = new Command();
     registerMcpCommand(program, deps);

@@ -5,10 +5,10 @@ import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockGetContainerLogs = vi.fn();
+const mockMechaLogs = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  getContainerLogs: (...args: unknown[]) => mockGetContainerLogs(...args),
+vi.mock("@mecha/service", () => ({
+  mechaLogs: (...args: unknown[]) => mockMechaLogs(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -28,21 +28,18 @@ describe("mecha logs", () => {
 
   it("streams log output to stdout", async () => {
     const stream = new PassThrough();
-    mockGetContainerLogs.mockResolvedValue(stream);
+    mockMechaLogs.mockResolvedValue(stream);
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const program = new Command();
     registerLogsCommand(program, deps);
 
-    // Write data before parsing so the data event fires after the handler is attached
     setTimeout(() => {
       stream.write(Buffer.from("log line\n"));
       stream.end();
     }, 10);
 
     await program.parseAsync(["logs", "mx-test-abc123"], { from: "user" });
-
-    // Give the stream events a tick to propagate
     await new Promise((r) => setTimeout(r, 20));
 
     expect(writeSpy).toHaveBeenCalled();
@@ -51,7 +48,7 @@ describe("mecha logs", () => {
 
   it("respects --tail option", async () => {
     const stream = new PassThrough();
-    mockGetContainerLogs.mockResolvedValue(stream);
+    mockMechaLogs.mockResolvedValue(stream);
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const program = new Command();
@@ -60,16 +57,15 @@ describe("mecha logs", () => {
     stream.end();
     await p;
 
-    expect(mockGetContainerLogs).toHaveBeenCalledWith(
+    expect(mockMechaLogs).toHaveBeenCalledWith(
       deps.dockerClient,
-      "mecha-mx-test-abc123",
-      expect.objectContaining({ tail: 50 }),
+      expect.objectContaining({ id: "mx-test-abc123", tail: 50 }),
     );
   });
 
   it("respects --since option", async () => {
     const stream = new PassThrough();
-    mockGetContainerLogs.mockResolvedValue(stream);
+    mockMechaLogs.mockResolvedValue(stream);
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const program = new Command();
@@ -78,9 +74,8 @@ describe("mecha logs", () => {
     stream.end();
     await p;
 
-    expect(mockGetContainerLogs).toHaveBeenCalledWith(
+    expect(mockMechaLogs).toHaveBeenCalledWith(
       deps.dockerClient,
-      "mecha-mx-test-abc123",
       expect.objectContaining({ since: expect.any(Number) }),
     );
   });
@@ -105,9 +100,8 @@ describe("mecha logs", () => {
 
   it("handles stream errors", async () => {
     const stream = new PassThrough();
-    // Prevent unhandled error
     stream.on("error", () => {});
-    mockGetContainerLogs.mockResolvedValue(stream);
+    mockMechaLogs.mockResolvedValue(stream);
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
 
     const program = new Command();
@@ -127,7 +121,7 @@ describe("mecha logs", () => {
 
   it("sets up SIGINT handler when --follow is used", async () => {
     const stream = new PassThrough();
-    mockGetContainerLogs.mockResolvedValue(stream);
+    mockMechaLogs.mockResolvedValue(stream);
     vi.spyOn(process.stdout, "write").mockImplementation(() => true);
     const onSpy = vi.spyOn(process, "on");
 
@@ -143,8 +137,8 @@ describe("mecha logs", () => {
     onSpy.mockRestore();
   });
 
-  it("reports errors when getContainerLogs fails", async () => {
-    mockGetContainerLogs.mockRejectedValueOnce(new Error("not found"));
+  it("reports errors when mechaLogs fails", async () => {
+    mockMechaLogs.mockRejectedValueOnce(new Error("not found"));
 
     const program = new Command();
     registerLogsCommand(program, deps);

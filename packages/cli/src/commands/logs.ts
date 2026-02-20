@@ -1,8 +1,7 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
-import { errMsg } from "../types.js";
-import { getContainerLogs } from "@mecha/docker";
-import { containerName, type MechaId } from "@mecha/core";
+import { mechaLogs } from "@mecha/service";
+import { toUserMessage, toExitCode } from "@mecha/contracts";
 
 export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -13,7 +12,6 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
     .option("--since <time>", "Show logs since timestamp or relative time")
     .action(async (id: string, cmdOpts: { follow?: boolean; tail: string; since?: string }) => {
       const { dockerClient, formatter } = deps;
-      const cName = containerName(id as MechaId);
       const tail = parseInt(cmdOpts.tail, 10);
       if (!Number.isInteger(tail) || tail < 0) {
         formatter.error(`Invalid --tail value: ${cmdOpts.tail}`);
@@ -31,9 +29,7 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
       }
 
       try {
-        const stream = await getContainerLogs(dockerClient, cName, {
-          follow: cmdOpts.follow, tail, since,
-        });
+        const stream = await mechaLogs(dockerClient, { id, follow: cmdOpts.follow ?? false, tail, since });
         stream.on("data", (chunk: Buffer) => process.stdout.write(chunk));
         stream.on("error", (err: Error) => {
           formatter.error(err.message);
@@ -46,8 +42,8 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
           });
         }
       } catch (err) {
-        formatter.error(errMsg(err));
-        process.exitCode = 1;
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
       }
     });
 }

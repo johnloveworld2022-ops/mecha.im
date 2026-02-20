@@ -9,6 +9,7 @@
   "references": [
     { "path": "packages/core" },
     { "path": "packages/contracts" },
+    { "path": "packages/service" },
     { "path": "packages/docker" },
     { "path": "packages/cli" },
     { "path": "packages/runtime" }

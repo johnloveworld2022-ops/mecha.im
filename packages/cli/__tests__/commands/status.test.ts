@@ -4,20 +4,26 @@ import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockInspectContainer = vi.fn();
+const mockMechaStatus = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  inspectContainer: (...args: unknown[]) => mockInspectContainer(...args),
+vi.mock("@mecha/service", () => ({
+  mechaStatus: (...args: unknown[]) => mockMechaStatus(...args),
 }));
 
 function createMockFormatter(): Formatter {
   return { info: vi.fn(), error: vi.fn(), success: vi.fn(), json: vi.fn(), table: vi.fn() };
 }
 
-const fakeInfo = {
-  Name: "/mecha-mx-test-abc123",
-  State: { Status: "running", Running: true, StartedAt: "2024-01-01T00:00:00Z", FinishedAt: "" },
-  Config: { Labels: { "mecha.path": "/home/user/project" } },
+const fakeStatus = {
+  id: "mx-test-abc123",
+  name: "mecha-mx-test-abc123",
+  state: "running",
+  running: true,
+  port: 7700,
+  path: "/home/user/project",
+  image: "mecha-runtime:latest",
+  startedAt: "2024-01-01T00:00:00Z",
+  finishedAt: "",
 };
 
 describe("mecha status", () => {
@@ -29,7 +35,7 @@ describe("mecha status", () => {
     deps = { dockerClient: { docker: {} } as any, formatter };
     process.exitCode = undefined;
     vi.clearAllMocks();
-    mockInspectContainer.mockResolvedValue(fakeInfo);
+    mockMechaStatus.mockResolvedValue(fakeStatus);
   });
 
   it("shows status info", async () => {
@@ -55,7 +61,7 @@ describe("mecha status", () => {
   });
 
   it("reports errors", async () => {
-    mockInspectContainer.mockRejectedValueOnce(new Error("not found"));
+    mockMechaStatus.mockRejectedValueOnce(new Error("not found"));
 
     const program = new Command();
     registerStatusCommand(program, deps);

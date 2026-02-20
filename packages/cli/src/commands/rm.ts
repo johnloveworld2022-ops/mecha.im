@@ -1,8 +1,7 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
-import { errMsg } from "../types.js";
-import { removeContainer, removeVolume } from "@mecha/docker";
-import { containerName, volumeName, type MechaId } from "@mecha/core";
+import { mechaRm } from "@mecha/service";
+import { toUserMessage, toExitCode } from "@mecha/contracts";
 
 export function registerRmCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -10,21 +9,14 @@ export function registerRmCommand(parent: Command, deps: CommandDeps): void {
     .description("Remove a Mecha by ID")
     .option("--with-state", "Also remove the state volume")
     .option("-f, --force", "Force remove even if running")
-    .action(
-      async (id: string, cmdOpts: { withState?: boolean; force?: boolean }) => {
-        const { dockerClient, formatter } = deps;
-        try {
-          await removeContainer(dockerClient, containerName(id as MechaId), cmdOpts.force ?? false);
-          formatter.success(`Mecha '${id}' removed.`);
-          if (cmdOpts.withState) {
-            const vName = volumeName(id as MechaId);
-            await removeVolume(dockerClient, vName);
-            formatter.success(`Volume '${vName}' removed.`);
-          }
-        } catch (err) {
-          formatter.error(errMsg(err));
-          process.exitCode = 1;
-        }
-      },
-    );
+    .action(async (id: string, cmdOpts: { withState?: boolean; force?: boolean }) => {
+      const { dockerClient, formatter } = deps;
+      try {
+        await mechaRm(dockerClient, { id, withState: cmdOpts.withState ?? false, force: cmdOpts.force ?? false });
+        formatter.success(`Mecha '${id}' removed.`);
+      } catch (err) {
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
+      }
+    });
 }

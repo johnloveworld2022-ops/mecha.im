@@ -23,6 +23,9 @@ importers:
 
   packages/cli:
     dependencies:
+      '@mecha/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@mecha/core':
         specifier: workspace:*
         version: link:../core
@@ -32,6 +35,9 @@ importers:
       '@mecha/docker':
         specifier: workspace:*
         version: link:../docker
+      '@mecha/service':
+        specifier: workspace:*
+        version: link:../service
       commander:
         specifier: ^13.1.0
         version: 13.1.0
@@ -91,12 +97,18 @@ importers:
       '@assistant-ui/react':
         specifier: ^0.12.11
         version: 0.12.11(@types/react-dom@19.2.3(@types/react@19.2.14))(@types/react@19.2.14)(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
+      '@mecha/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@mecha/core':
         specifier: workspace:*
         version: link:../core
       '@mecha/docker':
         specifier: workspace:*
         version: link:../docker
+      '@mecha/service':
+        specifier: workspace:*
+        version: link:../service
       next:
         specifier: ^15.3.3
         version: 15.5.12(react-dom@19.2.4(react@19.2.4))(react@19.2.4)
@@ -172,6 +184,31 @@ importers:
       '@types/node':
         specifier: ^25.3.0
         version: 25.3.0
+      typescript:
+        specifier: ^5.9.3
+        version: 5.9.3
+      vitest:
+        specifier: ^4.0.18
+        version: 4.0.18(@types/node@25.3.0)
+
+  packages/service:
+    dependencies:
+      '@mecha/contracts':
+        specifier: workspace:*
+        version: link:../contracts
+      '@mecha/core':
+        specifier: workspace:*
+        version: link:../core
+      '@mecha/docker':
+        specifier: workspace:*
+        version: link:../docker
+    devDependencies:
+      '@types/node':
+        specifier: ^25.3.0
+        version: 25.3.0
+      '@vitest/coverage-v8':
+        specifier: ^4.0.18
+        version: 4.0.18(vitest@4.0.18(@types/node@25.3.0))
       typescript:
         specifier: ^5.9.3
         version: 5.9.3

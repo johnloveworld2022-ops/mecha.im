@@ -1,12 +1,11 @@
 {
-  "name": "@mecha/cli",
+  "name": "@mecha/service",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "mecha": "./dist/bin.js"
-  },
-  "main": "./dist/bin.js",
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": { ".": { "import": "./dist/index.js", "types": "./dist/index.d.ts" } },
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -16,10 +15,7 @@
   "dependencies": {
     "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
-    "@mecha/dashboard": "workspace:*",
-    "@mecha/docker": "workspace:*",
-    "@mecha/service": "workspace:*",
-    "commander": "^13.1.0"
+    "@mecha/docker": "workspace:*"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",

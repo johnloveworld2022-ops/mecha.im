@@ -1,45 +1,18 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { registerUiCommand, resolveHostPort } from "../../src/commands/ui.js";
+import { registerUiCommand } from "../../src/commands/ui.js";
 import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockInspectContainer = vi.fn();
+const mockResolveUiUrl = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  inspectContainer: (...args: unknown[]) => mockInspectContainer(...args),
+vi.mock("@mecha/service", () => ({
+  resolveUiUrl: (...args: unknown[]) => mockResolveUiUrl(...args),
 }));
 
 function createMockFormatter(): Formatter {
   return { info: vi.fn(), error: vi.fn(), success: vi.fn(), json: vi.fn(), table: vi.fn() };
 }
-
-describe("resolveHostPort", () => {
-  let deps: CommandDeps;
-
-  beforeEach(() => {
-    deps = { dockerClient: { docker: {} } as any, formatter: createMockFormatter() };
-    vi.clearAllMocks();
-  });
-
-  it("returns host port from container info", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
-    });
-
-    const port = await resolveHostPort(deps, "mx-test-abc123");
-    expect(port).toBe("7700");
-  });
-
-  it("returns undefined when no port binding", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": null } },
-    });
-
-    const port = await resolveHostPort(deps, "mx-test-abc123");
-    expect(port).toBeUndefined();
-  });
-});
 
 describe("mecha ui", () => {
   let formatter: Formatter;
@@ -53,21 +26,17 @@ describe("mecha ui", () => {
   });
 
   it("prints URL when port is found", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
-    });
+    mockResolveUiUrl.mockResolvedValue({ url: "http://127.0.0.1:7700" });
 
     const program = new Command();
     registerUiCommand(program, deps);
     await program.parseAsync(["ui", "mx-test-abc123"], { from: "user" });
 
-    expect(formatter.info).toHaveBeenCalledWith(expect.stringContaining("7700"));
+    expect(formatter.info).toHaveBeenCalledWith("http://127.0.0.1:7700");
   });
 
-  it("errors when no port binding", async () => {
-    mockInspectContainer.mockResolvedValue({
-      NetworkSettings: { Ports: { "3000/tcp": null } },
-    });
+  it("errors when service throws", async () => {
+    mockResolveUiUrl.mockRejectedValueOnce(new Error("No port binding for mx-test-abc123"));
 
     const program = new Command();
     registerUiCommand(program, deps);
@@ -78,7 +47,7 @@ describe("mecha ui", () => {
   });
 
   it("reports errors on inspect failure", async () => {
-    mockInspectContainer.mockRejectedValueOnce(new Error("not found"));
+    mockResolveUiUrl.mockRejectedValueOnce(new Error("not found"));
 
     const program = new Command();
     registerUiCommand(program, deps);

@@ -1,8 +1,7 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
-import { errMsg } from "../types.js";
-import { inspectContainer } from "@mecha/docker";
-import { containerName, LABELS, type MechaId } from "@mecha/core";
+import { mechaStatus } from "@mecha/service";
+import { toUserMessage, toExitCode } from "@mecha/contracts";
 
 export function registerStatusCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -12,35 +11,25 @@ export function registerStatusCommand(parent: Command, deps: CommandDeps): void 
     .action(async (id: string, cmdOpts: { watch?: boolean }) => {
       const { dockerClient, formatter } = deps;
       const jsonMode = parent.opts().json ?? false;
-      const cName = containerName(id as MechaId);
 
       const printStatus = async (): Promise<void> => {
         try {
-          const info = await inspectContainer(dockerClient, cName);
-          const state = info.State;
+          const status = await mechaStatus(dockerClient, id);
 
           if (jsonMode) {
-            formatter.json({
-              id,
-              name: info.Name.replace(/^\//, ""),
-              state: state.Status,
-              running: state.Running,
-              startedAt: state.StartedAt,
-              finishedAt: state.FinishedAt,
-              path: info.Config.Labels?.[LABELS.MECHA_PATH] ?? "",
-            });
+            formatter.json(status);
           } else {
             const f = (label: string, val: unknown) => formatter.info(`${label.padEnd(10)}${val}`);
-            f("ID:", id);
-            f("Name:", info.Name.replace(/^\//, ""));
-            f("State:", state.Status);
-            f("Running:", state.Running);
-            f("Started:", state.StartedAt);
-            f("Path:", info.Config.Labels?.[LABELS.MECHA_PATH] ?? "");
+            f("ID:", status.id);
+            f("Name:", status.name);
+            f("State:", status.state);
+            f("Running:", status.running);
+            f("Started:", status.startedAt ?? "");
+            f("Path:", status.path);
           }
         } catch (err) {
-          formatter.error(errMsg(err));
-          process.exitCode = 1;
+          formatter.error(toUserMessage(err));
+          process.exitCode = toExitCode(err);
         }
       };
 

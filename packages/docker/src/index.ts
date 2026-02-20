@@ -1,4 +1,5 @@
 export { createDockerClient, ping } from "./client.js";
+export type { DockerClient } from "./client.js";
 export { ensureNetwork, removeNetwork } from "./network.js";
 export { ensureVolume, removeVolume } from "./volume.js";
 export {

@@ -1,7 +1,6 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
-import { ping } from "@mecha/docker";
-import { networkName } from "@mecha/core";
+import { mechaDoctor } from "@mecha/service";
 
 export function registerDoctorCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -9,35 +8,24 @@ export function registerDoctorCommand(parent: Command, deps: CommandDeps): void 
     .description("Check system requirements")
     .action(async () => {
       const { dockerClient, formatter } = deps;
-      const net = networkName();
-      let healthy = true;
 
-      try {
-        await ping(dockerClient);
+      const result = await mechaDoctor(dockerClient);
+
+      if (result.dockerAvailable) {
         formatter.success("Docker: available");
-      } catch {
+      } else {
         formatter.error("Docker is not available. Is Docker/Colima running?");
-        healthy = false;
       }
 
-      if (healthy) {
-        try {
-          const networks = await dockerClient.docker.listNetworks({
-            filters: { name: [net] },
-          });
-          if (networks.some((n: { Name: string }) => n.Name === net)) {
-            formatter.success(`Network '${net}': exists`);
-          } else {
-            formatter.error(`Network '${net}' not found. Run 'mecha init' first.`);
-            healthy = false;
-          }
-        } catch {
-          formatter.error("Failed to check network status.");
-          healthy = false;
+      if (result.dockerAvailable) {
+        if (result.networkExists) {
+          formatter.success(`Network: exists`);
+        } else {
+          formatter.error(`Network not found. Run 'mecha init' first.`);
         }
       }
 
-      if (healthy) {
+      if (result.issues.length === 0) {
         formatter.success("All checks passed.");
       } else {
         process.exitCode = 1;

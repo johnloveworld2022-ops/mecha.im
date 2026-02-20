@@ -1,8 +1,7 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
-import { errMsg } from "../types.js";
-import { listMechaContainers } from "@mecha/docker";
-import { LABELS } from "@mecha/core";
+import { mechaLs } from "@mecha/service";
+import { toUserMessage, toExitCode } from "@mecha/contracts";
 
 export function registerLsCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -13,13 +12,7 @@ export function registerLsCommand(parent: Command, deps: CommandDeps): void {
       const jsonMode = parent.opts().json ?? false;
 
       try {
-        const containers = await listMechaContainers(dockerClient);
-        const items = containers.map((c) => ({
-          id: c.Labels[LABELS.MECHA_ID] ?? "",
-          state: c.State,
-          status: c.Status,
-          path: c.Labels[LABELS.MECHA_PATH] ?? "",
-        }));
+        const items = await mechaLs(dockerClient);
 
         if (jsonMode) {
           formatter.json(items);
@@ -31,8 +24,8 @@ export function registerLsCommand(parent: Command, deps: CommandDeps): void {
         }));
         formatter.table(rows, ["ID", "STATE", "STATUS", "PATH"]);
       } catch (err) {
-        formatter.error(errMsg(err));
-        process.exitCode = 1;
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
       }
     });
 }

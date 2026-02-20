@@ -7,6 +7,7 @@ export default defineConfig({
       include: [
         "packages/core/src/**",
         "packages/contracts/src/**",
+        "packages/service/src/**",
         "packages/docker/src/**",
         "packages/cli/src/**",
         "packages/runtime/src/**",

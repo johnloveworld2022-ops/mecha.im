@@ -28,6 +28,12 @@ export default defineWorkspace([
   },
   {
     test: {
+      name: "service",
+      include: ["packages/service/__tests__/**/*.test.ts"],
+    },
+  },
+  {
+    test: {
       name: "cli",
       include: ["packages/cli/__tests__/**/*.test.ts"],
     },

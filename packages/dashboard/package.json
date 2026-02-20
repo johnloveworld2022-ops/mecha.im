@@ -11,8 +11,10 @@
   },
   "dependencies": {
     "@assistant-ui/react": "^0.12.11",
+    "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
     "@mecha/docker": "workspace:*",
+    "@mecha/service": "workspace:*",
     "next": "^15.3.3",
     "react": "^19.1.0",
     "react-dom": "^19.1.0"

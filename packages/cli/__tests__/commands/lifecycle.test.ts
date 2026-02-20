@@ -5,16 +5,16 @@ import type { Formatter } from "../../src/output/formatter.js";
 import { registerStopCommand, registerStartCommand, registerRestartCommand } from "../../src/commands/lifecycle.js";
 import { registerRmCommand } from "../../src/commands/rm.js";
 
-const mockStopContainer = vi.fn().mockResolvedValue(undefined);
-const mockStartContainer = vi.fn().mockResolvedValue(undefined);
-const mockRemoveContainer = vi.fn().mockResolvedValue(undefined);
-const mockRemoveVolume = vi.fn().mockResolvedValue(undefined);
+const mockMechaStop = vi.fn().mockResolvedValue(undefined);
+const mockMechaStart = vi.fn().mockResolvedValue(undefined);
+const mockMechaRestart = vi.fn().mockResolvedValue(undefined);
+const mockMechaRm = vi.fn().mockResolvedValue(undefined);
 
-vi.mock("@mecha/docker", () => ({
-  stopContainer: (...args: unknown[]) => mockStopContainer(...args),
-  startContainer: (...args: unknown[]) => mockStartContainer(...args),
-  removeContainer: (...args: unknown[]) => mockRemoveContainer(...args),
-  removeVolume: (...args: unknown[]) => mockRemoveVolume(...args),
+vi.mock("@mecha/service", () => ({
+  mechaStop: (...args: unknown[]) => mockMechaStop(...args),
+  mechaStart: (...args: unknown[]) => mockMechaStart(...args),
+  mechaRestart: (...args: unknown[]) => mockMechaRestart(...args),
+  mechaRm: (...args: unknown[]) => mockMechaRm(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -47,17 +47,12 @@ describe("lifecycle commands", () => {
       registerStopCommand(program, deps);
       await program.parseAsync(["stop", "mx-test-abc123"], { from: "user" });
 
-      expect(mockStopContainer).toHaveBeenCalledWith(
-        deps.dockerClient,
-        "mecha-mx-test-abc123",
-      );
-      expect(formatter.success).toHaveBeenCalledWith(
-        expect.stringContaining("stopped"),
-      );
+      expect(mockMechaStop).toHaveBeenCalledWith(deps.dockerClient, "mx-test-abc123");
+      expect(formatter.success).toHaveBeenCalledWith(expect.stringContaining("stopped"));
     });
 
     it("reports errors", async () => {
-      mockStopContainer.mockRejectedValueOnce(new Error("not found"));
+      mockMechaStop.mockRejectedValueOnce(new Error("not found"));
       const program = new Command();
       registerStopCommand(program, deps);
       await program.parseAsync(["stop", "mx-bad"], { from: "user" });
@@ -73,39 +68,25 @@ describe("lifecycle commands", () => {
       registerStartCommand(program, deps);
       await program.parseAsync(["start", "mx-test-abc123"], { from: "user" });
 
-      expect(mockStartContainer).toHaveBeenCalledWith(
-        deps.dockerClient,
-        "mecha-mx-test-abc123",
-      );
-      expect(formatter.success).toHaveBeenCalledWith(
-        expect.stringContaining("started"),
-      );
+      expect(mockMechaStart).toHaveBeenCalledWith(deps.dockerClient, "mx-test-abc123");
+      expect(formatter.success).toHaveBeenCalledWith(expect.stringContaining("started"));
     });
   });
 
   describe("mecha restart", () => {
-    it("stops then starts a container", async () => {
+    it("restarts a container", async () => {
       const program = new Command();
       registerRestartCommand(program, deps);
       await program.parseAsync(["restart", "mx-test-abc123"], { from: "user" });
 
-      expect(mockStopContainer).toHaveBeenCalledWith(
-        deps.dockerClient,
-        "mecha-mx-test-abc123",
-      );
-      expect(mockStartContainer).toHaveBeenCalledWith(
-        deps.dockerClient,
-        "mecha-mx-test-abc123",
-      );
-      expect(formatter.success).toHaveBeenCalledWith(
-        expect.stringContaining("restarted"),
-      );
+      expect(mockMechaRestart).toHaveBeenCalledWith(deps.dockerClient, "mx-test-abc123");
+      expect(formatter.success).toHaveBeenCalledWith(expect.stringContaining("restarted"));
     });
   });
 
   describe("mecha rm (error)", () => {
     it("reports error when remove fails", async () => {
-      mockRemoveContainer.mockRejectedValueOnce(new Error("remove failed"));
+      mockMechaRm.mockRejectedValueOnce(new Error("remove failed"));
       const program = new Command();
       registerRmCommand(program, deps);
       await program.parseAsync(["rm", "mx-bad"], { from: "user" });
@@ -121,41 +102,32 @@ describe("lifecycle commands", () => {
       registerRmCommand(program, deps);
       await program.parseAsync(["rm", "mx-test-abc123"], { from: "user" });
 
-      expect(mockRemoveContainer).toHaveBeenCalledWith(
+      expect(mockMechaRm).toHaveBeenCalledWith(
         deps.dockerClient,
-        "mecha-mx-test-abc123",
-        false,
+        { id: "mx-test-abc123", withState: false, force: false },
       );
-      expect(formatter.success).toHaveBeenCalledWith(
-        expect.stringContaining("removed"),
-      );
+      expect(formatter.success).toHaveBeenCalledWith(expect.stringContaining("removed"));
     });
 
     it("removes container and volume with --with-state", async () => {
       const program = new Command();
       registerRmCommand(program, deps);
-      await program.parseAsync(["rm", "--with-state", "mx-test-abc123"], {
-        from: "user",
-      });
+      await program.parseAsync(["rm", "--with-state", "mx-test-abc123"], { from: "user" });
 
-      expect(mockRemoveContainer).toHaveBeenCalled();
-      expect(mockRemoveVolume).toHaveBeenCalledWith(
+      expect(mockMechaRm).toHaveBeenCalledWith(
         deps.dockerClient,
-        "mecha-state-mx-test-abc123",
+        { id: "mx-test-abc123", withState: true, force: false },
       );
     });
 
     it("force removes with --force", async () => {
       const program = new Command();
       registerRmCommand(program, deps);
-      await program.parseAsync(["rm", "--force", "mx-test-abc123"], {
-        from: "user",
-      });
+      await program.parseAsync(["rm", "--force", "mx-test-abc123"], { from: "user" });
 
-      expect(mockRemoveContainer).toHaveBeenCalledWith(
+      expect(mockMechaRm).toHaveBeenCalledWith(
         deps.dockerClient,
-        "mecha-mx-test-abc123",
-        true,
+        { id: "mx-test-abc123", withState: false, force: true },
       );
     });
   });

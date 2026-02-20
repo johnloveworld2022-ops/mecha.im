@@ -3,7 +3,6 @@ import { registerLsCommand } from "../../src/commands/ls.js";
 import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
-import { LABELS } from "@mecha/core";
 
 function createMockFormatter(): Formatter {
   return {
@@ -15,24 +14,22 @@ function createMockFormatter(): Formatter {
   };
 }
 
-const mockListMechaContainers = vi.fn();
+const mockMechaLs = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  listMechaContainers: (...args: unknown[]) =>
-    mockListMechaContainers(...args),
+vi.mock("@mecha/service", () => ({
+  mechaLs: (...args: unknown[]) => mockMechaLs(...args),
 }));
 
-function makeFakeContainers() {
+function makeFakeItems() {
   return [
     {
-      Names: ["/mecha-mx-test-abc123"],
-      State: "running",
-      Status: "Up 5 minutes",
-      Labels: {
-        [LABELS.IS_MECHA]: "true",
-        [LABELS.MECHA_ID]: "mx-test-abc123",
-        [LABELS.MECHA_PATH]: "/home/user/project",
-      },
+      id: "mx-test-abc123",
+      name: "mecha-mx-test-abc123",
+      state: "running",
+      status: "Up 5 minutes",
+      path: "/home/user/project",
+      port: 7700,
+      created: 1700000000,
     },
   ];
 }
@@ -43,16 +40,12 @@ describe("mecha ls", () => {
   beforeEach(() => {
     formatter = createMockFormatter();
     process.exitCode = undefined;
-    mockListMechaContainers.mockResolvedValue(makeFakeContainers());
+    vi.clearAllMocks();
+    mockMechaLs.mockResolvedValue(makeFakeItems());
   });
 
   it("lists containers as a table", async () => {
-    const mockDocker = { docker: {} };
-    const deps: CommandDeps = {
-      dockerClient: mockDocker as any,
-      formatter,
-    };
-
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
     const program = new Command();
     program.option("--json", "JSON output");
     registerLsCommand(program, deps);
@@ -67,10 +60,9 @@ describe("mecha ls", () => {
     expect(rows[0]!.STATE).toBe("running");
   });
 
-  it("reports errors on listMechaContainers failure", async () => {
-    mockListMechaContainers.mockRejectedValueOnce(new Error("docker down"));
-    const mockDocker = { docker: {} };
-    const deps: CommandDeps = { dockerClient: mockDocker as any, formatter };
+  it("reports errors on mechaLs failure", async () => {
+    mockMechaLs.mockRejectedValueOnce(new Error("docker down"));
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
 
     const program = new Command();
     program.option("--json", "JSON output");
@@ -82,12 +74,7 @@ describe("mecha ls", () => {
   });
 
   it("outputs JSON when --json flag is set", async () => {
-    const mockDocker = { docker: {} };
-    const deps: CommandDeps = {
-      dockerClient: mockDocker as any,
-      formatter,
-    };
-
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
     const program = new Command();
     program.option("--json", "JSON output");
     registerLsCommand(program, deps);

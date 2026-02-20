@@ -4,10 +4,10 @@ import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
 
-const mockExecInContainer = vi.fn();
+const mockMechaExec = vi.fn();
 
-vi.mock("@mecha/docker", () => ({
-  execInContainer: (...args: unknown[]) => mockExecInContainer(...args),
+vi.mock("@mecha/service", () => ({
+  mechaExec: (...args: unknown[]) => mockMechaExec(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -27,16 +27,15 @@ describe("mecha exec", () => {
 
   it("executes command and writes output", async () => {
     const writeSpy = vi.spyOn(process.stdout, "write").mockImplementation(() => true);
-    mockExecInContainer.mockResolvedValue({ exitCode: 0, output: "hello\n" });
+    mockMechaExec.mockResolvedValue({ exitCode: 0, output: "hello\n" });
 
     const program = new Command();
     registerExecCommand(program, deps);
     await program.parseAsync(["exec", "mx-test-abc123", "echo", "hello"], { from: "user" });
 
-    expect(mockExecInContainer).toHaveBeenCalledWith(
+    expect(mockMechaExec).toHaveBeenCalledWith(
       deps.dockerClient,
-      "mecha-mx-test-abc123",
-      ["echo", "hello"],
+      { id: "mx-test-abc123", cmd: ["echo", "hello"] },
     );
     expect(writeSpy).toHaveBeenCalledWith("hello\n");
     expect(process.exitCode).toBe(0);
@@ -44,7 +43,7 @@ describe("mecha exec", () => {
   });
 
   it("reports errors", async () => {
-    mockExecInContainer.mockRejectedValueOnce(new Error("container not found"));
+    mockMechaExec.mockRejectedValueOnce(new Error("container not found"));
 
     const program = new Command();
     registerExecCommand(program, deps);
