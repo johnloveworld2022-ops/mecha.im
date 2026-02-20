@@ -1,8 +1,28 @@
 import { defineWorkspace } from "vitest/config";
 
 export default defineWorkspace([
-  "packages/core",
-  "packages/docker",
-  "packages/cli",
-  "packages/runtime",
+  {
+    test: {
+      name: "core",
+      include: ["packages/core/__tests__/**/*.test.ts"],
+    },
+  },
+  {
+    test: {
+      name: "docker",
+      include: ["packages/docker/__tests__/**/*.test.ts"],
+    },
+  },
+  {
+    test: {
+      name: "cli",
+      include: ["packages/cli/__tests__/**/*.test.ts"],
+    },
+  },
+  {
+    test: {
+      name: "runtime",
+      include: ["packages/runtime/__tests__/**/*.test.ts"],
+    },
+  },
 ]);
