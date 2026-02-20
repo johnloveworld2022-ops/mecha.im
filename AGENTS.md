@@ -36,3 +36,17 @@ This ensures Claude Code, Codex CLI, and Gemini CLI share the same context consi
 - `.gemini/skills/` - Gemini CLI skills
 - `.gemini/commands/` - Gemini CLI custom slash commands (TOML)
 - `.mcp.json` - MCP server configuration
+
+## Known Limitations
+
+### Dashboard Sessions
+Dashboard stores sessions in-memory (`packages/dashboard/src/lib/auth.ts`).
+This is single-process only. If multi-instance deployment is needed, replace with signed JWT or Redis sessions.
+
+### Security Trust Boundary
+Secrets (CLAUDE_CODE_OAUTH_TOKEN, ANTHROPIC_API_KEY, MECHA_OTP) are passed as container environment variables.
+This is acceptable when Docker socket access is controlled. Anyone with Docker socket access can read container env.
+
+### Port Assignment
+Default port assignment uses Docker-native allocation. Ports are not guaranteed to be in the 7700-7799 range.
+Use `--port` / request body `port` field for deterministic assignment.
