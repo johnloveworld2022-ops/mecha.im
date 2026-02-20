@@ -27,7 +27,10 @@ export async function createContainer(
   const container = await client.docker.createContainer({
     name: opts.containerName,
     Image: opts.image,
-    Env: opts.env || [],
+    Env: [
+      `MECHA_ID=${opts.mechaId}`,
+      ...(opts.env || []),
+    ],
     Labels: {
       [LABELS.IS_MECHA]: "true",
       [LABELS.MECHA_ID]: opts.mechaId,
