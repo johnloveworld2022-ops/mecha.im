@@ -343,14 +343,20 @@ export function MechaList() {
                         style={btnStyle("var(--warning)", isActing)}
                       >Stop</button>
                     )}
+                    {isRunning && (
+                      <button
+                        disabled={isActing}
+                        onClick={() => action(m.id, "restart")}
+                        style={btnStyle("var(--accent)", isActing)}
+                      >Restart</button>
+                    )}
                     <button
                       disabled={isActing}
-                      onClick={() => action(m.id, "restart")}
-                      style={btnStyle("var(--accent)", isActing)}
-                    >Restart</button>
-                    <button
-                      disabled={isActing}
-                      onClick={() => removeMecha(m.id)}
+                      onClick={() => {
+                        if (window.confirm(`Remove mecha "${m.id}"? This will delete the container.`)) {
+                          removeMecha(m.id);
+                        }
+                      }}
                       style={btnStyle("var(--danger)", isActing)}
                     >Remove</button>
                   </div>
