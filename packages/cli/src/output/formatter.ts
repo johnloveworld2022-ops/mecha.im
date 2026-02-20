@@ -44,16 +44,10 @@ export function createFormatter(opts: GlobalOptions): Formatter {
       }
 
       // Calculate column widths
-      const widths: Record<string, number> = {};
-      for (const h of headers) {
-        widths[h] = h.length;
-      }
-      for (const row of rows) {
-        for (const h of headers) {
-          const val = row[h] ?? "";
-          widths[h] = Math.max(widths[h] ?? 0, val.length);
-        }
-      }
+      const widths: Record<string, number> = Object.fromEntries(headers.map((h) => [h, h.length]));
+      for (const row of rows)
+        for (const h of headers)
+          widths[h] = Math.max(widths[h]!, (row[h] ?? "").length);
 
       // Print header
       const headerLine = headers.map((h) => h.padEnd(widths[h]!)).join("  ");

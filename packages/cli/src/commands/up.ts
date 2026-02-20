@@ -1,5 +1,6 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
+import { errMsg } from "../types.js";
 import {
   computeMechaId,
   containerName,
@@ -47,9 +48,7 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
 
       // Load .env files: project dir first (takes priority), then cwd
       // Neither overrides existing env vars (e.g. set in shell)
-      const envDirs = [projectPath, process.cwd()];
-      // Deduplicate if cwd === projectPath
-      const uniqueDirs = [...new Set(envDirs)];
+      const uniqueDirs = [...new Set([projectPath, process.cwd()])];
       for (const dir of uniqueDirs) {
         try {
           const envPath = join(dir, ".env");
@@ -60,10 +59,7 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
             const eqIdx = trimmed.indexOf("=");
             if (eqIdx > 0) {
               const key = trimmed.slice(0, eqIdx);
-              const value = trimmed.slice(eqIdx + 1);
-              if (!process.env[key]) {
-                process.env[key] = value;
-              }
+              if (!process.env[key]) process.env[key] = trimmed.slice(eqIdx + 1);
             }
           }
         } catch {
@@ -92,9 +88,7 @@ export function registerUpCommand(parent: Command, deps: CommandDeps): void {
         formatter.info(`  Port: ${hostPort}`);
         formatter.info(`  Name: ${cName}`);
       } catch (err) {
-        formatter.error(
-          err instanceof Error ? err.message : String(err),
-        );
+        formatter.error(errMsg(err));
         process.exitCode = 1;
       }
     });

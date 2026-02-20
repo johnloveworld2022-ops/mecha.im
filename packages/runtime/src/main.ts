@@ -37,7 +37,7 @@ const app = createServer({
   authToken: process.env["MECHA_AUTH_TOKEN"],
   agent: {
     workingDirectory: process.env["MECHA_WORKSPACE"] ?? "/workspace",
-    permissionMode: (process.env["MECHA_PERMISSION_MODE"] as "default" | "plan" | "full-auto") ?? "default",
+    permissionMode: (process.env["MECHA_PERMISSION_MODE"] ?? "default") as "default" | "plan" | "full-auto",
   },
 });
 

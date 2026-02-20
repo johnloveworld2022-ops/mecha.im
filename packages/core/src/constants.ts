@@ -45,7 +45,6 @@ export const SECURITY = {
   /** Group ID for non-root container execution */
   GID: 1000,
   /** Capabilities to drop */
-  CAP_DROP: ["ALL"] as readonly string[],
-  /** Security options */
-  SECURITY_OPT: ["no-new-privileges"] as readonly string[],
+  CAP_DROP: ["ALL"],
+  SECURITY_OPT: ["no-new-privileges"],
 } as const;

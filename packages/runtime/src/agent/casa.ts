@@ -3,11 +3,12 @@ import type { MechaId } from "@mecha/core";
 
 export interface AgentOptions {
   mechaId: MechaId;
-  /** Working directory for the agent (defaults to /workspace) */
   workingDirectory?: string;
-  /** Permission mode for the agent */
   permissionMode?: "default" | "plan" | "full-auto";
 }
+
+type PermissionMode = "acceptEdits" | "plan" | "default";
+const PERMISSION_MAP: Record<string, PermissionMode> = { "full-auto": "acceptEdits", plan: "plan", default: "default" };
 
 /**
  * Register agent chat routes on Fastify.
@@ -51,16 +52,14 @@ export function registerAgentRoutes(
         Connection: "keep-alive",
       });
 
+      reply.hijack();
+
       const stream = query({
         prompt: body.message,
         options: {
           abortController,
           cwd: agentOpts.workingDirectory ?? "/workspace",
-          permissionMode: agentOpts.permissionMode === "full-auto"
-            ? "acceptEdits"
-            : agentOpts.permissionMode === "plan"
-              ? "plan"
-              : "default",
+          permissionMode: PERMISSION_MAP[agentOpts.permissionMode ?? "default"] ?? "default",
         },
       });
 
@@ -81,8 +80,5 @@ export function registerAgentRoutes(
       }
       reply.raw.end();
     }
-
-    // Mark reply as sent since we wrote directly to raw response
-    reply.hijack();
   });
 }

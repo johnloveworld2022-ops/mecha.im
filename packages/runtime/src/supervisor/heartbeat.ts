@@ -7,23 +7,15 @@ export function startHeartbeat(
   intervalMs: number,
 ): () => void {
   const stmt = db.prepare(
-    "INSERT INTO heartbeats (mecha_id, status, active_tasks, timestamp) VALUES (?, ?, ?, datetime('now'))",
+    "INSERT INTO heartbeats (mecha_id, status, active_tasks) VALUES (?, ?, ?)",
   );
 
   const write = () => {
-    try {
-      stmt.run(mechaId, "running", 0);
-    } catch (err) {
-      console.error("Heartbeat write failed:", err instanceof Error ? err.message : err);
-    }
+    try { stmt.run(mechaId, "running", 0); }
+    catch (err) { console.error("Heartbeat write failed:", err instanceof Error ? err.message : err); }
   };
 
-  // Write initial heartbeat immediately
   write();
-
   const timer = setInterval(write, intervalMs);
-
-  return function stopHeartbeat() {
-    clearInterval(timer);
-  };
+  return () => clearInterval(timer);
 }

@@ -1,33 +1,31 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
+import { errMsg } from "../types.js";
 import { inspectContainer } from "@mecha/docker";
-import { containerName, DEFAULTS } from "@mecha/core";
-import type { MechaId } from "@mecha/core";
+import { containerName, DEFAULTS, type MechaId } from "@mecha/core";
+
+/** Resolve the host port for a mecha container */
+export async function resolveHostPort(deps: CommandDeps, id: string): Promise<string | undefined> {
+  const info = await inspectContainer(deps.dockerClient, containerName(id as MechaId));
+  return info.NetworkSettings.Ports[`${DEFAULTS.CONTAINER_PORT}/tcp`]?.[0]?.HostPort;
+}
 
 export function registerUiCommand(parent: Command, deps: CommandDeps): void {
   parent
     .command("ui <id>")
     .description("Print the UI URL for a Mecha")
     .action(async (id: string) => {
-      const { dockerClient, formatter } = deps;
-      const cName = containerName(id as MechaId);
-
+      const { formatter } = deps;
       try {
-        const info = await inspectContainer(dockerClient, cName);
-        const portKey = `${DEFAULTS.CONTAINER_PORT}/tcp`;
-        const bindings =
-          info.NetworkSettings.Ports[portKey];
-        const hostPort = bindings?.[0]?.HostPort;
-
+        const hostPort = await resolveHostPort(deps, id);
         if (hostPort) {
-          const url = `http://127.0.0.1:${hostPort}`;
-          formatter.info(url);
+          formatter.info(`http://127.0.0.1:${hostPort}`);
         } else {
           formatter.error("No port binding found for this Mecha.");
           process.exitCode = 1;
         }
       } catch (err) {
-        formatter.error(err instanceof Error ? err.message : String(err));
+        formatter.error(errMsg(err));
         process.exitCode = 1;
       }
     });

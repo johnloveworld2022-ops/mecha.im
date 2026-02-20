@@ -1,8 +1,7 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { MechaId, MechaState } from "@mecha/core";
 import { createMcpServer, registerMcpRoutes } from "./mcp/server.js";
-import { registerAgentRoutes } from "./agent/casa.js";
-import type { AgentOptions } from "./agent/casa.js";
+import { registerAgentRoutes, type AgentOptions } from "./agent/casa.js";
 import { generateToken, createAuthMiddleware } from "./auth/token.js";
 
 export interface ServerOptions {
@@ -24,65 +23,31 @@ export interface ServerOptions {
 
 export function createServer(opts: ServerOptions): FastifyInstance {
   const startTime = Date.now();
+  const getUptime = () => Math.floor((Date.now() - startTime) / 1000);
   const app = Fastify({ logger: opts.logger ?? false });
 
   // --- auth middleware (skips /healthz) ---
   if (!opts.skipAuth) {
     const token = opts.authToken ?? generateToken();
-    app.addHook("onReady", () => {
-      if (!opts.authToken) {
-        app.log.info(`Auth token: ${token}`);
-      }
-    });
+    if (!opts.authToken) app.addHook("onReady", () => app.log.info(`Auth token: ${token}`));
     app.addHook("preHandler", createAuthMiddleware(token));
   }
 
-  // --- health check (no auth — middleware skips /healthz) ---
-  app.get("/healthz", async (_req, reply) => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    return reply.send({ status: "ok", uptime });
-  });
+  app.get("/healthz", async (_req, reply) => reply.send({ status: "ok", uptime: getUptime() }));
 
-  // --- runtime info ---
-  app.get("/info", async (_req, reply) => {
-    const uptime = Math.floor((Date.now() - startTime) / 1000);
-    const info = {
-      id: opts.mechaId,
-      version: opts.version ?? "0.1.0",
-      uptime,
-      state: "running" as MechaState,
-    };
-    return reply.send(info);
-  });
+  app.get("/info", async (_req, reply) => reply.send({
+    id: opts.mechaId, version: opts.version ?? "0.1.0", uptime: getUptime(), state: "running" as MechaState,
+  }));
 
-  // --- register sub-routes ---
-  if (!opts.skipMcp) {
-    const mcpHandle = createMcpServer(opts.mechaId);
-    registerMcpRoutes(app, mcpHandle);
-  }
-  const agentOpts = opts.agent
-    ? { mechaId: opts.mechaId, ...opts.agent }
-    : undefined;
-  registerAgentRoutes(app, agentOpts);
+  if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer(opts.mechaId));
+  registerAgentRoutes(app, opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined);
 
   // --- graceful shutdown ---
-  const cleanup = () => {
-    process.removeListener("SIGTERM", onSignal);
-    process.removeListener("SIGINT", onSignal);
-  };
-
-  const onSignal = async () => {
-    cleanup();
-    await app.close();
-  };
-
+  const onSignal = async () => { cleanup(); await app.close(); };
+  const cleanup = () => { process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal); };
   process.on("SIGTERM", onSignal);
   process.on("SIGINT", onSignal);
-
-  // Also clean up listeners when app.close() is called directly (e.g., in tests)
-  app.addHook("onClose", async () => {
-    cleanup();
-  });
+  app.addHook("onClose", async () => cleanup());
 
   return app;
 }

@@ -75,19 +75,11 @@ function resolveDockerOpts(): Dockerode.DockerOptions | undefined {
 
 /** Create a Dockerode client instance */
 export function createDockerClient(opts?: Dockerode.DockerOptions): DockerClient {
-  if (!opts) {
-    opts = resolveDockerOpts();
-  }
-  const docker = new Dockerode(opts);
-  return { docker };
+  return { docker: new Dockerode(opts ?? resolveDockerOpts()) };
 }
 
 /** Check if Docker daemon is reachable */
 export async function ping(client: DockerClient): Promise<boolean> {
-  try {
-    await client.docker.ping();
-    return true;
-  } catch {
-    throw new DockerNotAvailableError();
-  }
+  try { await client.docker.ping(); return true; }
+  catch { throw new DockerNotAvailableError(); }
 }

@@ -12,13 +12,11 @@ export const migration001 = {
         memory_pressure REAL,
         timestamp TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
       CREATE TABLE IF NOT EXISTS state (
         key TEXT PRIMARY KEY,
         value TEXT,
         updated_at TEXT NOT NULL DEFAULT (datetime('now'))
       );
-
       CREATE TABLE IF NOT EXISTS chat_messages (
         id INTEGER PRIMARY KEY AUTOINCREMENT,
         role TEXT NOT NULL,

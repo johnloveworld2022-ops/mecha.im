@@ -2,9 +2,7 @@ import { describe, it, expect, vi, beforeEach } from "vitest";
 import { Command } from "commander";
 import type { CommandDeps } from "../../src/types.js";
 import type { Formatter } from "../../src/output/formatter.js";
-import { registerStopCommand } from "../../src/commands/stop.js";
-import { registerStartCommand } from "../../src/commands/start.js";
-import { registerRestartCommand } from "../../src/commands/restart.js";
+import { registerStopCommand, registerStartCommand, registerRestartCommand } from "../../src/commands/lifecycle.js";
 import { registerRmCommand } from "../../src/commands/rm.js";
 
 const mockStopContainer = vi.fn().mockResolvedValue(undefined);

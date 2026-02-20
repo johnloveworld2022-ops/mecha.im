@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
+import { errMsg } from "../types.js";
 import { execInContainer } from "@mecha/docker";
-import { containerName } from "@mecha/core";
-import type { MechaId } from "@mecha/core";
+import { containerName, type MechaId } from "@mecha/core";
 
 export function registerExecCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -12,14 +12,12 @@ export function registerExecCommand(parent: Command, deps: CommandDeps): void {
     .argument("<command...>", "Command to execute")
     .action(async (id: string, command: string[]) => {
       const { dockerClient, formatter } = deps;
-      const cName = containerName(id as MechaId);
-
       try {
-        const result = await execInContainer(dockerClient, cName, command);
+        const result = await execInContainer(dockerClient, containerName(id as MechaId), command);
         process.stdout.write(result.output);
         process.exitCode = result.exitCode;
       } catch (err) {
-        formatter.error(err instanceof Error ? err.message : String(err));
+        formatter.error(errMsg(err));
         process.exitCode = 1;
       }
     });

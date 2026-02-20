@@ -1,8 +1,8 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
+import { errMsg } from "../types.js";
 import { getContainerLogs } from "@mecha/docker";
-import { containerName } from "@mecha/core";
-import type { MechaId } from "@mecha/core";
+import { containerName, type MechaId } from "@mecha/core";
 
 export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -11,61 +11,43 @@ export function registerLogsCommand(parent: Command, deps: CommandDeps): void {
     .option("-f, --follow", "Follow log output")
     .option("-n, --tail <lines>", "Number of lines to show from the end", "100")
     .option("--since <time>", "Show logs since timestamp or relative time")
-    .action(
-      async (
-        id: string,
-        cmdOpts: {
-          follow?: boolean;
-          tail: string;
-          since?: string;
-        },
-      ) => {
-        const { dockerClient, formatter } = deps;
-        const cName = containerName(id as MechaId);
-        const tail = parseInt(cmdOpts.tail, 10);
-        if (!Number.isInteger(tail) || tail < 0) {
-          formatter.error(`Invalid --tail value: ${cmdOpts.tail}`);
+    .action(async (id: string, cmdOpts: { follow?: boolean; tail: string; since?: string }) => {
+      const { dockerClient, formatter } = deps;
+      const cName = containerName(id as MechaId);
+      const tail = parseInt(cmdOpts.tail, 10);
+      if (!Number.isInteger(tail) || tail < 0) {
+        formatter.error(`Invalid --tail value: ${cmdOpts.tail}`);
+        process.exitCode = 1;
+        return;
+      }
+      let since: number | undefined;
+      if (cmdOpts.since) {
+        since = Math.floor(new Date(cmdOpts.since).getTime() / 1000);
+        if (Number.isNaN(since)) {
+          formatter.error(`Invalid --since value: ${cmdOpts.since}`);
           process.exitCode = 1;
           return;
         }
-        let since: number | undefined;
-        if (cmdOpts.since) {
-          since = Math.floor(new Date(cmdOpts.since).getTime() / 1000);
-          if (Number.isNaN(since)) {
-            formatter.error(`Invalid --since value: ${cmdOpts.since}`);
-            process.exitCode = 1;
-            return;
-          }
-        }
+      }
 
-        try {
-          const stream = await getContainerLogs(dockerClient, cName, {
-            follow: cmdOpts.follow,
-            tail,
-            since,
-          });
-
-          stream.on("data", (chunk: Buffer) => {
-            process.stdout.write(chunk);
-          });
-
-          stream.on("error", (err: Error) => {
-            formatter.error(err.message);
-            process.exitCode = 1;
-          });
-
-          if (cmdOpts.follow) {
-            process.on("SIGINT", () => {
-              if ("destroy" in stream && typeof stream.destroy === "function") {
-                stream.destroy();
-              }
-              process.exit(0);
-            });
-          }
-        } catch (err) {
-          formatter.error(err instanceof Error ? err.message : String(err));
+      try {
+        const stream = await getContainerLogs(dockerClient, cName, {
+          follow: cmdOpts.follow, tail, since,
+        });
+        stream.on("data", (chunk: Buffer) => process.stdout.write(chunk));
+        stream.on("error", (err: Error) => {
+          formatter.error(err.message);
           process.exitCode = 1;
+        });
+        if (cmdOpts.follow) {
+          process.on("SIGINT", () => {
+            (stream as NodeJS.ReadableStream & { destroy?: () => void }).destroy?.();
+            process.exit(0);
+          });
         }
-      },
-    );
+      } catch (err) {
+        formatter.error(errMsg(err));
+        process.exitCode = 1;
+      }
+    });
 }

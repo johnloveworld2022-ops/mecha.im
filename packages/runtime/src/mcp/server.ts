@@ -4,25 +4,24 @@ import { StreamableHTTPServerTransport } from "@modelcontextprotocol/sdk/server/
 import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { resolve, relative } from "node:path";
+import { readdir, readFile } from "node:fs/promises";
 
 const WORKSPACE_ROOT = "/workspace";
 const MAX_SESSIONS = 100;
 const SESSION_TTL_MS = 30 * 60 * 1000; // 30 minutes
 
-/**
- * Resolve a user-provided path safely within /workspace.
- * Rejects absolute paths and parent traversal attempts.
- */
+/** Resolve a user-provided path safely within /workspace. */
 function safePath(userPath: string): string {
   const resolved = resolve(WORKSPACE_ROOT, userPath);
   const rel = relative(WORKSPACE_ROOT, resolved);
-  if (rel.startsWith("..") || resolve("/", rel) !== resolve("/", rel)) {
-    throw new Error("Path traversal detected: access denied");
-  }
-  if (!resolved.startsWith(WORKSPACE_ROOT)) {
+  if (rel.startsWith("..") || !resolved.startsWith(WORKSPACE_ROOT)) {
     throw new Error("Path traversal detected: access denied");
   }
   return resolved;
+}
+
+function textContent(text: string, isError = false) {
+  return { content: [{ type: "text" as const, text }], ...(isError && { isError: true }) };
 }
 
 export interface McpServerHandle {
@@ -65,10 +64,12 @@ export function registerMcpRoutes(
   }, 60_000);
   cleanupTimer.unref();
 
+  const getSessionId = (req: { headers: Record<string, string | string[] | undefined> }) =>
+    (req.headers["mcp-session-id"] as string) || undefined;
+
   // POST /mcp — main MCP endpoint
   app.post("/mcp", async (req, reply) => {
-    const sessionId = (req.headers["mcp-session-id"] as string) || undefined;
-
+    const sessionId = getSessionId(req);
     let transport: StreamableHTTPServerTransport;
 
     if (sessionId && sessions.has(sessionId)) {
@@ -107,7 +108,7 @@ export function registerMcpRoutes(
 
   // GET /mcp — SSE stream for server-to-client notifications
   app.get("/mcp", async (req, reply) => {
-    const sessionId = (req.headers["mcp-session-id"] as string) || undefined;
+    const sessionId = getSessionId(req);
     if (!sessionId || !sessions.has(sessionId)) {
       return reply.code(400).send({ error: "Invalid or missing session ID" });
     }
@@ -120,7 +121,7 @@ export function registerMcpRoutes(
 
   // DELETE /mcp — close session
   app.delete("/mcp", async (req, reply) => {
-    const sessionId = (req.headers["mcp-session-id"] as string) || undefined;
+    const sessionId = getSessionId(req);
     if (!sessionId || !sessions.has(sessionId)) {
       return reply.code(404).send({ error: "Session not found" });
     }
@@ -135,23 +136,8 @@ export function registerMcpRoutes(
  * Register default MCP tools for a Mecha runtime.
  */
 function registerDefaultTools(mcpServer: McpServer): void {
-  mcpServer.tool(
-    "mecha_status",
-    "Get the current status of this Mecha instance",
-    {},
-    async () => {
-      return {
-        content: [
-          {
-            type: "text" as const,
-            text: JSON.stringify({
-              status: "running",
-              timestamp: new Date().toISOString(),
-            }),
-          },
-        ],
-      };
-    },
+  mcpServer.tool("mecha_status", "Get the current status of this Mecha instance", {}, async () =>
+    textContent(JSON.stringify({ status: "running", timestamp: new Date().toISOString() })),
   );
 
   mcpServer.tool(
@@ -159,33 +145,13 @@ function registerDefaultTools(mcpServer: McpServer): void {
     "List files in the Mecha workspace",
     { path: z.string().optional().describe("Subdirectory path within /workspace") },
     async ({ path }) => {
-      const { readdir } = await import("node:fs/promises");
       let targetPath: string;
-      try {
-        targetPath = path ? safePath(path) : WORKSPACE_ROOT;
-      } catch {
-        return {
-          content: [{ type: "text" as const, text: "Error: path traversal denied" }],
-          isError: true,
-        };
-      }
+      try { targetPath = path ? safePath(path) : WORKSPACE_ROOT; }
+      catch { return textContent("Error: path traversal denied", true); }
       try {
         const entries = await readdir(targetPath, { withFileTypes: true });
-        const items = entries.map((e) => ({
-          name: e.name,
-          type: e.isDirectory() ? "directory" : "file",
-        }));
-        return {
-          content: [{ type: "text" as const, text: JSON.stringify(items) }],
-        };
-      } catch {
-        return {
-          content: [
-            { type: "text" as const, text: `Error: cannot read ${targetPath}` },
-          ],
-          isError: true,
-        };
-      }
+        return textContent(JSON.stringify(entries.map((e) => ({ name: e.name, type: e.isDirectory() ? "directory" : "file" }))));
+      } catch { return textContent(`Error: cannot read ${targetPath}`, true); }
     },
   );
 
@@ -194,32 +160,11 @@ function registerDefaultTools(mcpServer: McpServer): void {
     "Read a file from the Mecha workspace",
     { path: z.string().describe("File path relative to /workspace") },
     async ({ path: filePath }) => {
-      const { readFile } = await import("node:fs/promises");
       let resolvedPath: string;
-      try {
-        resolvedPath = safePath(filePath);
-      } catch {
-        return {
-          content: [{ type: "text" as const, text: "Error: path traversal denied" }],
-          isError: true,
-        };
-      }
-      try {
-        const content = await readFile(resolvedPath, "utf-8");
-        return {
-          content: [{ type: "text" as const, text: content }],
-        };
-      } catch {
-        return {
-          content: [
-            {
-              type: "text" as const,
-              text: `Error: cannot read ${filePath}`,
-            },
-          ],
-          isError: true,
-        };
-      }
+      try { resolvedPath = safePath(filePath); }
+      catch { return textContent("Error: path traversal denied", true); }
+      try { return textContent(await readFile(resolvedPath, "utf-8")); }
+      catch { return textContent(`Error: cannot read ${filePath}`, true); }
     },
   );
 }

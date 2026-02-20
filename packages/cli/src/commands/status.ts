@@ -1,13 +1,10 @@
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
+import { errMsg } from "../types.js";
 import { inspectContainer } from "@mecha/docker";
-import { containerName, LABELS } from "@mecha/core";
-import type { MechaId } from "@mecha/core";
+import { containerName, LABELS, type MechaId } from "@mecha/core";
 
-export function registerStatusCommand(
-  parent: Command,
-  deps: CommandDeps,
-): void {
+export function registerStatusCommand(parent: Command, deps: CommandDeps): void {
   parent
     .command("status <id>")
     .description("Show status of a Mecha")
@@ -33,26 +30,23 @@ export function registerStatusCommand(
               path: info.Config.Labels?.[LABELS.MECHA_PATH] ?? "",
             });
           } else {
-            formatter.info(`ID:       ${id}`);
-            formatter.info(`Name:     ${info.Name.replace(/^\//, "")}`);
-            formatter.info(`State:    ${state.Status}`);
-            formatter.info(`Running:  ${state.Running}`);
-            formatter.info(`Started:  ${state.StartedAt}`);
-            formatter.info(`Path:     ${info.Config.Labels?.[LABELS.MECHA_PATH] ?? ""}`);
+            const f = (label: string, val: unknown) => formatter.info(`${label.padEnd(10)}${val}`);
+            f("ID:", id);
+            f("Name:", info.Name.replace(/^\//, ""));
+            f("State:", state.Status);
+            f("Running:", state.Running);
+            f("Started:", state.StartedAt);
+            f("Path:", info.Config.Labels?.[LABELS.MECHA_PATH] ?? "");
           }
         } catch (err) {
-          formatter.error(err instanceof Error ? err.message : String(err));
+          formatter.error(errMsg(err));
           process.exitCode = 1;
         }
       };
 
       if (cmdOpts.watch) {
-        let stopped = false;
-        process.on("SIGINT", () => {
-          stopped = true;
-          process.exit(0);
-        });
-        while (!stopped) {
+        process.on("SIGINT", () => process.exit(0));
+        while (true) {
           await printStatus();
           await new Promise((r) => setTimeout(r, 2000));
         }
