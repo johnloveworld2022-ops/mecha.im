@@ -1,7 +1,86 @@
 import type { FastifyInstance } from "fastify";
+import type { MechaId } from "@mecha/core";
 
-export function registerAgentRoutes(app: FastifyInstance): void {
-  app.post("/api/chat", async (_req, reply) => {
-    return reply.code(501).send({ error: "Not implemented" });
+export interface AgentOptions {
+  mechaId: MechaId;
+  /** Working directory for the agent (defaults to /workspace) */
+  workingDirectory?: string;
+  /** Permission mode for the agent */
+  permissionMode?: "default" | "plan" | "full-auto";
+}
+
+/**
+ * Register agent chat routes on Fastify.
+ *
+ * POST /api/chat — send a message to the CASA agent and stream back responses.
+ * Request body: { message: string, history?: Array<{ role, content }> }
+ * Response: newline-delimited JSON stream of SDKMessage events.
+ */
+export function registerAgentRoutes(
+  app: FastifyInstance,
+  agentOpts?: AgentOptions,
+): void {
+  app.post("/api/chat", async (req, reply) => {
+    const body = req.body as { message?: string } | null;
+    if (!body?.message) {
+      return reply.code(400).send({ error: "Missing 'message' field" });
+    }
+
+    // If no agent options configured, the SDK isn't available
+    if (!agentOpts) {
+      return reply.code(503).send({
+        error: "Agent not configured",
+        detail: "ANTHROPIC_API_KEY or Claude auth required",
+      });
+    }
+
+    try {
+      // Dynamically import the Agent SDK to avoid hard failure when not available
+      const { query } = await import("@anthropic-ai/claude-agent-sdk");
+
+      const abortController = new AbortController();
+
+      // Clean up if client disconnects
+      req.raw.on("close", () => {
+        abortController.abort();
+      });
+
+      reply.raw.writeHead(200, {
+        "Content-Type": "text/event-stream",
+        "Cache-Control": "no-cache",
+        Connection: "keep-alive",
+      });
+
+      const stream = query({
+        prompt: body.message,
+        options: {
+          abortController,
+          cwd: agentOpts.workingDirectory ?? "/workspace",
+          permissionMode: agentOpts.permissionMode === "full-auto"
+            ? "acceptEdits"
+            : "default",
+        },
+      });
+
+      for await (const message of stream) {
+        if (abortController.signal.aborted) break;
+
+        // Send each message as an SSE event
+        const data = JSON.stringify(message);
+        reply.raw.write(`data: ${data}\n\n`);
+      }
+
+      reply.raw.write("data: [DONE]\n\n");
+      reply.raw.end();
+    } catch (err) {
+      if (!reply.raw.headersSent) {
+        const message = err instanceof Error ? err.message : "Unknown error";
+        return reply.code(500).send({ error: message });
+      }
+      reply.raw.end();
+    }
+
+    // Mark reply as sent since we wrote directly to raw response
+    reply.hijack();
   });
 }

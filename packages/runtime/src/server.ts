@@ -2,6 +2,7 @@ import Fastify, { type FastifyInstance } from "fastify";
 import type { MechaId, MechaState } from "@mecha/core";
 import { createMcpServer, registerMcpRoutes } from "./mcp/server.js";
 import { registerAgentRoutes } from "./agent/casa.js";
+import type { AgentOptions } from "./agent/casa.js";
 
 export interface ServerOptions {
   /** Mecha ID for this runtime instance */
@@ -12,6 +13,8 @@ export interface ServerOptions {
   logger?: boolean;
   /** Skip MCP server setup (for testing) */
   skipMcp?: boolean;
+  /** Agent configuration (omit to disable agent endpoint) */
+  agent?: Omit<AgentOptions, "mechaId">;
 }
 
 export function createServer(opts: ServerOptions): FastifyInstance {
@@ -41,7 +44,10 @@ export function createServer(opts: ServerOptions): FastifyInstance {
     const mcpHandle = createMcpServer(opts.mechaId);
     registerMcpRoutes(app, mcpHandle);
   }
-  registerAgentRoutes(app);
+  const agentOpts = opts.agent
+    ? { mechaId: opts.mechaId, ...opts.agent }
+    : undefined;
+  registerAgentRoutes(app, agentOpts);
 
   // --- graceful shutdown ---
   const shutdown = async () => {

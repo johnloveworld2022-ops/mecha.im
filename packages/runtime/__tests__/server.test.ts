@@ -33,11 +33,30 @@ describe("Fastify server", () => {
     expect(typeof body.uptime).toBe("number");
   });
 
-  it("POST /api/chat returns 501 stub", async () => {
+  it("POST /api/chat returns 400 without message", async () => {
     app = createServer({ mechaId: TEST_ID, skipMcp: true });
-    const res = await app.inject({ method: "POST", url: "/api/chat" });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: {},
+    });
 
-    expect(res.statusCode).toBe(501);
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Missing");
+  });
+
+  it("POST /api/chat returns 503 when agent not configured", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { message: "hello" },
+    });
+
+    expect(res.statusCode).toBe(503);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("not configured");
   });
 
   it("graceful shutdown closes the server", async () => {
