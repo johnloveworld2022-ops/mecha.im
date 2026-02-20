@@ -49,20 +49,23 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
   const client = getDockerClient();
   const name = containerName(mechaId);
 
-  let body: { claudeToken?: string; otp?: string; permissionMode?: string };
+  let body: { claudeToken?: string; anthropicApiKey?: string; otp?: string; permissionMode?: string };
   try {
     body = await request.json() as typeof body;
   } catch {
     return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
-  const hasUpdate = body.claudeToken !== undefined || body.otp !== undefined || body.permissionMode !== undefined;
+  const hasUpdate = body.claudeToken !== undefined || body.anthropicApiKey !== undefined || body.otp !== undefined || body.permissionMode !== undefined;
   if (!hasUpdate) {
-    return NextResponse.json({ error: "At least one field required: claudeToken, otp, permissionMode" }, { status: 400 });
+    return NextResponse.json({ error: "At least one field required: claudeToken, anthropicApiKey, otp, permissionMode" }, { status: 400 });
   }
 
   if (body.claudeToken !== undefined && typeof body.claudeToken !== "string") {
     return NextResponse.json({ error: "claudeToken must be a string" }, { status: 400 });
+  }
+  if (body.anthropicApiKey !== undefined && typeof body.anthropicApiKey !== "string") {
+    return NextResponse.json({ error: "anthropicApiKey must be a string" }, { status: 400 });
   }
   if (body.otp !== undefined && typeof body.otp !== "string") {
     return NextResponse.json({ error: "otp must be a string" }, { status: 400 });
@@ -99,6 +102,10 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
   if (body.claudeToken !== undefined) {
     if (body.claudeToken) envMap.set("CLAUDE_CODE_OAUTH_TOKEN", body.claudeToken);
     else envMap.delete("CLAUDE_CODE_OAUTH_TOKEN");
+  }
+  if (body.anthropicApiKey !== undefined) {
+    if (body.anthropicApiKey) envMap.set("ANTHROPIC_API_KEY", body.anthropicApiKey);
+    else envMap.delete("ANTHROPIC_API_KEY");
   }
   if (body.otp !== undefined) {
     if (body.otp) envMap.set("MECHA_OTP", body.otp);

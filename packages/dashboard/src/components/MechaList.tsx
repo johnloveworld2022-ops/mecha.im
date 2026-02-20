@@ -183,7 +183,7 @@ export function MechaList() {
         />
       </div>
       <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <label htmlFor="create-claude-token" style={labelStyle}>Claude Token:</label>
+        <label htmlFor="create-claude-token" style={labelStyle}>Claude Setup Token:</label>
         <input
           id="create-claude-token"
           type="password"

@@ -6,12 +6,13 @@ import { useRouter } from "next/navigation";
 export function MechaSettings({ mechaId }: { mechaId: string }) {
   const router = useRouter();
   const [claudeToken, setClaudeToken] = useState("");
+  const [anthropicApiKey, setAnthropicApiKey] = useState("");
   const [otp, setOtp] = useState("");
   const [permissionMode, setPermissionMode] = useState("");
   const [loading, setLoading] = useState(false);
   const [message, setMessage] = useState<{ type: "success" | "error"; text: string } | null>(null);
 
-  const hasInput = claudeToken || otp || permissionMode;
+  const hasInput = claudeToken || anthropicApiKey || otp || permissionMode;
 
   async function handleSubmit(e: React.FormEvent) {
     e.preventDefault();
@@ -22,6 +23,7 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
 
     const body: Record<string, string> = {};
     if (claudeToken) body.claudeToken = claudeToken;
+    if (anthropicApiKey) body.anthropicApiKey = anthropicApiKey;
     if (otp) body.otp = otp;
     if (permissionMode) body.permissionMode = permissionMode;
 
@@ -40,6 +42,7 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
 
       setMessage({ type: "success", text: "Updated — container recreated" });
       setClaudeToken("");
+      setAnthropicApiKey("");
       setOtp("");
       setPermissionMode("");
       router.refresh();
@@ -74,12 +77,23 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
     <form onSubmit={handleSubmit}>
       <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "12px" }}>
         <div>
-          <label style={labelStyle}>Claude Token</label>
+          <label style={labelStyle}>Claude Setup Token</label>
           <input
             type="password"
             placeholder="Leave empty to keep current"
             value={claudeToken}
             onChange={(e) => setClaudeToken(e.target.value)}
+            style={inputStyle}
+            disabled={loading}
+          />
+        </div>
+        <div>
+          <label style={labelStyle}>Anthropic API Key</label>
+          <input
+            type="password"
+            placeholder="Leave empty to keep current"
+            value={anthropicApiKey}
+            onChange={(e) => setAnthropicApiKey(e.target.value)}
             style={inputStyle}
             disabled={loading}
           />

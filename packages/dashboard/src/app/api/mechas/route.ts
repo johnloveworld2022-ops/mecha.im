@@ -21,7 +21,7 @@ import { getOtpSecret } from "@/lib/auth";
 const ALLOWED_ENV_KEY = /^[A-Z][A-Z0-9_]*$/;
 const BLOCKED_ENV_KEYS = new Set([
   "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
-  "CLAUDE_CODE_OAUTH_TOKEN", "MECHA_OTP", "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN",
+  "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "MECHA_OTP", "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN",
 ]);
 
 const VALID_PERMISSION_MODES = ["default", "plan", "full-auto"] as const;
