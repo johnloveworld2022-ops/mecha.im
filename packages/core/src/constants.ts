@@ -16,6 +16,8 @@ export const DEFAULTS = {
   STOP_TIMEOUT_SECONDS: 10,
   /** Home directory for mecha global config */
   HOME_DIR: ".mecha",
+  /** Default dashboard port */
+  DASHBOARD_PORT: 7600,
 } as const;
 
 /** Mount paths inside the container */

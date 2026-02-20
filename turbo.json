@@ -5,6 +5,14 @@
       "dependsOn": ["^build"],
       "outputs": ["dist/**"]
     },
+    "@mecha/dashboard#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**"]
+    },
+    "@mecha/ui#build": {
+      "dependsOn": ["^build"],
+      "outputs": [".next/**"]
+    },
     "test": {
       "dependsOn": ["build"],
       "outputs": []

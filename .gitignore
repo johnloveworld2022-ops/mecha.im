@@ -83,6 +83,8 @@ venv/
 # Common build directories
 dist/
 build/
+.next/
+next-env.d.ts
 
 # Turborepo cache
 .turbo/

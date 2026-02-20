@@ -46,7 +46,13 @@ function generateCode(secret: Buffer, counter: bigint): string {
 export function verifyTotp(secret: string, code: string): boolean {
   if (!/^\d{6}$/.test(code)) return false;
 
-  const key = decodeBase32(secret);
+  let key: Buffer;
+  try {
+    key = decodeBase32(secret);
+  } catch {
+    return false;
+  }
+
   const now = BigInt(Math.floor(Date.now() / 1000 / STEP));
 
   for (let i = -WINDOW; i <= WINDOW; i++) {

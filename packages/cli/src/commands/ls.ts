@@ -16,7 +16,6 @@ export function registerLsCommand(parent: Command, deps: CommandDeps): void {
         const containers = await listMechaContainers(dockerClient);
         const items = containers.map((c) => ({
           id: c.Labels[LABELS.MECHA_ID] ?? "",
-          name: (c.Names[0] ?? "").replace(/^\//, ""),
           state: c.State,
           status: c.Status,
           path: c.Labels[LABELS.MECHA_PATH] ?? "",
@@ -27,10 +26,10 @@ export function registerLsCommand(parent: Command, deps: CommandDeps): void {
           return;
         }
 
-        const rows = items.map(({ id, name, state, status, path }) => ({
-          ID: id, NAME: name, STATE: state, STATUS: status, PATH: path,
+        const rows = items.map(({ id, state, status, path }) => ({
+          ID: id, STATE: state, STATUS: status, PATH: path,
         }));
-        formatter.table(rows, ["ID", "NAME", "STATE", "STATUS", "PATH"]);
+        formatter.table(rows, ["ID", "STATE", "STATUS", "PATH"]);
       } catch (err) {
         formatter.error(errMsg(err));
         process.exitCode = 1;

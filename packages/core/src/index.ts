@@ -21,3 +21,4 @@ export {
   LABELS,
   SECURITY,
 } from "./constants.js";
+export { verifyTotp, generateTotp } from "./totp.js";

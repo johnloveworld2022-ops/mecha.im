@@ -1,6 +1,6 @@
 import { describe, it, expect, afterEach } from "vitest";
 import { generateToken, createAuthMiddleware } from "../src/auth/token.js";
-import { generateTotp, verifyTotp } from "../src/auth/totp.js";
+import { generateTotp, verifyTotp } from "@mecha/core";
 import { createServer } from "../src/server.js";
 import type { MechaId } from "@mecha/core";
 
@@ -110,14 +110,14 @@ describe("OTP auth", () => {
     return app;
   }
 
-  it("allows access via ?otp= query parameter with valid TOTP code", async () => {
+  it("rejects OTP via query parameter (header only)", async () => {
     makeApp();
     const code = generateTotp(otpSecret);
     const res = await app.inject({
       method: "GET",
       url: `/info?otp=${code}`,
     });
-    expect(res.statusCode).toBe(200);
+    expect(res.statusCode).toBe(401);
   });
 
   it("allows access via X-Mecha-OTP header with valid TOTP code", async () => {
@@ -131,11 +131,12 @@ describe("OTP auth", () => {
     expect(res.statusCode).toBe(200);
   });
 
-  it("rejects wrong TOTP code", async () => {
+  it("rejects wrong TOTP code via header", async () => {
     makeApp();
     const res = await app.inject({
       method: "GET",
-      url: `/info?otp=000000`,
+      url: "/info",
+      headers: { "x-mecha-otp": "000000" },
     });
     expect(res.statusCode).toBe(401);
   });

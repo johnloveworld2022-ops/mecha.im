@@ -15,6 +15,7 @@ import { registerLogsCommand } from "./commands/logs.js";
 import { registerExecCommand } from "./commands/exec.js";
 import { registerUiCommand } from "./commands/ui.js";
 import { registerMcpCommand } from "./commands/mcp.js";
+import { registerDashboardCommand } from "./commands/dashboard.js";
 
 export function createProgram(depsOverride?: CommandDeps): Command {
   const program = new Command();
@@ -53,6 +54,7 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   registerExecCommand(program, deps);
   registerUiCommand(program, deps);
   registerMcpCommand(program, deps);
+  registerDashboardCommand(program, deps);
 
   return program;
 }
