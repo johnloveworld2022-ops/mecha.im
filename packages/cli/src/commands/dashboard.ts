@@ -1,12 +1,13 @@
 import { spawn } from "node:child_process";
 import { existsSync } from "node:fs";
+import { createRequire } from "node:module";
 import { resolve, dirname } from "node:path";
-import { fileURLToPath } from "node:url";
 import type { Command } from "commander";
 import type { CommandDeps } from "../types.js";
 import { DEFAULTS } from "@mecha/core";
 
-const __dirname = dirname(fileURLToPath(import.meta.url));
+const require = createRequire(import.meta.url);
+const dashboardRoot = dirname(require.resolve("@mecha/dashboard/package.json"));
 
 export function registerDashboardCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -17,7 +18,7 @@ export function registerDashboardCommand(parent: Command, deps: CommandDeps): vo
     .action(async (opts: { port: string; open: boolean }) => {
       const { formatter } = deps;
       const port = opts.port;
-      const dashboardDir = resolve(__dirname, "../../../dashboard");
+      const dashboardDir = dashboardRoot;
 
       // Check if dashboard has been built
       if (!existsSync(resolve(dashboardDir, ".next"))) {
