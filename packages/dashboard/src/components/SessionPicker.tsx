@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
 
 interface SessionSummary {
   sessionId: string;
@@ -11,16 +11,21 @@ interface SessionSummary {
   createdAt: string;
 }
 
+export interface SessionPickerHandle {
+  refreshSessions: () => void;
+}
+
 interface Props {
   mechaId: string;
   selectedSessionId: string | null;
   onSelectSession: (sessionId: string | null) => void;
 }
 
-export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: Props) {
+export const SessionPicker = forwardRef<SessionPickerHandle, Props>(function SessionPicker({ mechaId, selectedSessionId, onSelectSession }, ref) {
   const [sessions, setSessions] = useState<SessionSummary[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [pendingDeleteId, setPendingDeleteId] = useState<string | null>(null);
 
   const fetchSessions = useCallback(async () => {
     try {
@@ -38,6 +43,10 @@ export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: P
       setLoading(false);
     }
   }, [mechaId]);
+
+  useImperativeHandle(ref, () => ({
+    refreshSessions: () => { fetchSessions(); },
+  }), [fetchSessions]);
 
   useEffect(() => {
     fetchSessions();
@@ -63,9 +72,10 @@ export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: P
     }
   }, [mechaId, onSelectSession]);
 
-  const deleteSession = useCallback(async (sessionId: string, e: React.MouseEvent) => {
-    e.stopPropagation();
-    if (!confirm("Delete this session?")) return;
+  const confirmDelete = useCallback(async () => {
+    if (!pendingDeleteId) return;
+    const sessionId = pendingDeleteId;
+    setPendingDeleteId(null);
     try {
       const res = await fetch(`/api/mechas/${mechaId}/sessions/${sessionId}`, {
         method: "DELETE",
@@ -82,7 +92,7 @@ export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: P
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to delete session");
     }
-  }, [mechaId, selectedSessionId, onSelectSession]);
+  }, [pendingDeleteId, mechaId, selectedSessionId, onSelectSession]);
 
   if (loading) {
     return <div style={{ fontSize: "13px", color: "var(--text-muted)" }}>Loading sessions...</div>;
@@ -167,7 +177,7 @@ export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: P
                   ({s.messageCount})
                 </span>
                 <button
-                  onClick={(e) => deleteSession(s.sessionId, e)}
+                  onClick={(e) => { e.stopPropagation(); setPendingDeleteId(s.sessionId); }}
                   style={{
                     background: "none",
                     border: "none",
@@ -186,6 +196,69 @@ export function SessionPicker({ mechaId, selectedSessionId, onSelectSession }: P
           })}
         </div>
       )}
+
+      {/* Confirm delete modal */}
+      {pendingDeleteId && (
+        <div
+          style={{
+            position: "fixed",
+            inset: 0,
+            display: "flex",
+            alignItems: "center",
+            justifyContent: "center",
+            backgroundColor: "rgba(0,0,0,0.5)",
+            zIndex: 1000,
+          }}
+          onClick={() => setPendingDeleteId(null)}
+        >
+          <div
+            onClick={(e) => e.stopPropagation()}
+            style={{
+              backgroundColor: "var(--bg-primary)",
+              border: "1px solid var(--border)",
+              borderRadius: "8px",
+              padding: "20px 24px",
+              maxWidth: "360px",
+              width: "100%",
+              boxShadow: "0 4px 24px rgba(0,0,0,0.3)",
+            }}
+          >
+            <p style={{ fontSize: "14px", marginBottom: "16px" }}>
+              Delete this session? This cannot be undone.
+            </p>
+            <div style={{ display: "flex", justifyContent: "flex-end", gap: "8px" }}>
+              <button
+                onClick={() => setPendingDeleteId(null)}
+                style={{
+                  padding: "6px 16px",
+                  fontSize: "13px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--border)",
+                  backgroundColor: "var(--bg-secondary)",
+                  color: "var(--text-primary)",
+                  cursor: "pointer",
+                }}
+              >
+                Cancel
+              </button>
+              <button
+                onClick={confirmDelete}
+                style={{
+                  padding: "6px 16px",
+                  fontSize: "13px",
+                  borderRadius: "4px",
+                  border: "1px solid var(--danger)",
+                  backgroundColor: "var(--danger)",
+                  color: "#fff",
+                  cursor: "pointer",
+                }}
+              >
+                Delete
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
     </div>
   );
-}
+});

@@ -5,7 +5,7 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLocalRuntime, type ChatModelAdapter } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 
-function createMechaAdapter(mechaId: string, sessionId: string | null): ChatModelAdapter {
+function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamComplete?: () => void): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
       let res: Response;
@@ -103,6 +103,9 @@ function createMechaAdapter(mechaId: string, sessionId: string | null): ChatMode
           }
         }
       }
+
+      // Notify parent that stream finished (for refreshing session list counts)
+      onStreamComplete?.();
     },
   };
 }
@@ -139,10 +142,11 @@ function extractText(event: Record<string, unknown>): ExtractResult {
 interface MechaChatProps {
   mechaId: string;
   sessionId?: string | null;
+  onStreamComplete?: () => void;
 }
 
-export function MechaChat({ mechaId, sessionId = null }: MechaChatProps) {
-  const adapter = useMemo(() => createMechaAdapter(mechaId, sessionId), [mechaId, sessionId]);
+export function MechaChat({ mechaId, sessionId = null, onStreamComplete }: MechaChatProps) {
+  const adapter = useMemo(() => createMechaAdapter(mechaId, sessionId, onStreamComplete), [mechaId, sessionId, onStreamComplete]);
   const runtime = useLocalRuntime(adapter);
 
   return (
