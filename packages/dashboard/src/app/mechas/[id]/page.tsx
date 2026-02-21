@@ -13,6 +13,7 @@ import { MechaExec } from "@/components/MechaExec";
 import { MechaInspect } from "@/components/MechaInspect";
 import { MechaUpdate } from "@/components/MechaUpdate";
 import { ThemeToggle } from "@/components/ThemeToggle";
+import { MechaMcp } from "@/components/MechaMcp";
 
 export default async function MechaDetailPage({
   params,
@@ -88,6 +89,15 @@ export default async function MechaDetailPage({
           <MechaSettings mechaId={id} />
         </div>
       </Section>
+
+      {/* MCP */}
+      {isRunning && (
+        <Section title="MCP Server">
+          <div className="p-4 rounded-lg bg-card border border-border">
+            <MechaMcp mechaId={id} />
+          </div>
+        </Section>
+      )}
 
       {/* Environment */}
       <Section title="Environment">
