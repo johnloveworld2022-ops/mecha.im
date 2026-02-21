@@ -1,32 +1,39 @@
-import { randomBytes } from "node:crypto";
+import { createHmac, randomBytes, timingSafeEqual } from "node:crypto";
 import { cookies } from "next/headers";
 
 const SESSION_COOKIE = "mecha_session";
-const SESSION_TTL = 24 * 60 * 60 * 1000; // 24 hours
-const MAX_SESSIONS = 100;
-const EVICTION_INTERVAL = 60 * 60 * 1000; // 1 hour
+const SESSION_TTL = 24 * 60 * 60; // 24 hours in seconds
+const ALGORITHM = "sha256";
 
-interface Session {
-  createdAt: number;
+interface SessionPayload {
+  /** Subject (random nonce to prevent replay across signing keys) */
+  sub: string;
+  /** Issued-at (Unix seconds) */
+  iat: number;
+  /** Expiry (Unix seconds) */
+  exp: number;
 }
 
-const sessions = new Map<string, Session>();
-
-// Periodic eviction of expired sessions
-let lastEviction = Date.now();
-function evictExpired(): void {
-  const now = Date.now();
-  if (now - lastEviction < EVICTION_INTERVAL) return;
-  lastEviction = now;
-  for (const [id, session] of sessions) {
-    if (now - session.createdAt > SESSION_TTL) {
-      sessions.delete(id);
-    }
+/**
+ * Returns the signing key. Uses SESSION_SECRET env var if set,
+ * otherwise generates a random key (which resets on process restart — acceptable
+ * since the old in-memory sessions also reset on restart).
+ */
+let _ephemeralKey: string | undefined;
+function getSigningKey(): string {
+  if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
+  if (!_ephemeralKey) {
+    _ephemeralKey = randomBytes(32).toString("hex");
+    console.warn("[auth] No SESSION_SECRET set — using ephemeral key (sessions reset on restart)");
   }
+  return _ephemeralKey;
+}
+
+function sign(payload: string): string {
+  return createHmac(ALGORITHM, getSigningKey()).update(payload).digest("base64url");
 }
 
 export function isAuthEnabled(): boolean {
-  // Auth is enabled when MECHA_OTP is configured, unless explicitly disabled
   if (process.env.MECHA_AUTH_DISABLED === "1") return false;
   return !!process.env.MECHA_OTP;
 }
@@ -35,38 +42,57 @@ export function getOtpSecret(): string | undefined {
   return process.env.MECHA_OTP;
 }
 
+/**
+ * Create a signed session cookie value.
+ * Format: base64url(JSON payload).signature
+ */
 export function createSession(): string {
-  evictExpired();
-  // Enforce max sessions to prevent unbounded growth
-  if (sessions.size >= MAX_SESSIONS) {
-    // Remove oldest session
-    let oldestId: string | undefined;
-    let oldestTime = Infinity;
-    for (const [id, session] of sessions) {
-      if (session.createdAt < oldestTime) {
-        oldestTime = session.createdAt;
-        oldestId = id;
-      }
-    }
-    if (oldestId) sessions.delete(oldestId);
-  }
-  const id = randomBytes(32).toString("hex");
-  sessions.set(id, { createdAt: Date.now() });
-  return id;
+  const now = Math.floor(Date.now() / 1000);
+  const payload: SessionPayload = {
+    sub: randomBytes(16).toString("hex"),
+    iat: now,
+    exp: now + SESSION_TTL,
+  };
+  const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
+  const signature = sign(encoded);
+  return `${encoded}.${signature}`;
 }
 
-export function validateSession(sessionId: string): boolean {
-  const session = sessions.get(sessionId);
-  if (!session) return false;
-  if (Date.now() - session.createdAt > SESSION_TTL) {
-    sessions.delete(sessionId);
+/**
+ * Validate a signed session cookie value.
+ * Returns true if signature is valid and session has not expired.
+ */
+export function validateSession(sessionValue: string): boolean {
+  const dotIndex = sessionValue.lastIndexOf(".");
+  if (dotIndex === -1) return false;
+
+  const encoded = sessionValue.slice(0, dotIndex);
+  const signature = sessionValue.slice(dotIndex + 1);
+
+  // Verify signature using timing-safe comparison
+  const expected = sign(encoded);
+  if (signature.length !== expected.length) return false;
+  const sigBuf = Buffer.from(signature);
+  const expBuf = Buffer.from(expected);
+  if (!timingSafeEqual(sigBuf, expBuf)) return false;
+
+  // Decode and check expiry
+  try {
+    const payload = JSON.parse(Buffer.from(encoded, "base64url").toString()) as SessionPayload;
+    const now = Math.floor(Date.now() / 1000);
+    if (payload.exp <= now) return false;
+    return true;
+  } catch {
     return false;
   }
-  return true;
 }
 
-export function deleteSession(sessionId: string): void {
-  sessions.delete(sessionId);
+/**
+ * deleteSession is a no-op for signed cookies (stateless — the cookie
+ * is simply cleared from the browser). Kept for API compatibility.
+ */
+export function deleteSession(_sessionValue: string): void {
+  // Stateless sessions: nothing to delete server-side
 }
 
 export async function getSessionFromCookies(): Promise<string | undefined> {
@@ -81,7 +107,7 @@ export async function setSessionCookie(sessionId: string): Promise<void> {
     secure: process.env.NODE_ENV === "production",
     sameSite: "strict",
     path: "/",
-    maxAge: SESSION_TTL / 1000,
+    maxAge: SESSION_TTL,
   });
 }
 
