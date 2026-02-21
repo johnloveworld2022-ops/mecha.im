@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { mechaStatus, mechaConfigure, mechaRm } from "@mecha/service";
-import { toHttpStatus } from "@mecha/contracts";
+import { toHttpStatus, toSafeMessage } from "@mecha/contracts";
 import { ContainerNotFoundError } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { withAuth } from "@/lib/api-auth";
@@ -44,8 +44,7 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
     const status = toHttpStatus(err);
-    const message = err instanceof Error ? err.message : "Unknown error";
-    return NextResponse.json({ error: message }, { status });
+    return NextResponse.json({ error: toSafeMessage(err) }, { status });
   }
 });
 

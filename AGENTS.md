@@ -50,3 +50,16 @@ This is acceptable when Docker socket access is controlled. Anyone with Docker s
 ### Port Assignment
 Default port assignment uses Docker-native allocation. Ports are not guaranteed to be in the 7700-7799 range.
 Use `--port` / request body `port` field for deterministic assignment.
+
+### Quality Gates (Local Only)
+All gates (`pnpm test`, `pnpm test:coverage`, `pnpm typecheck`, `pnpm build`) run locally.
+No CI/CD pipeline is configured yet. Add GitHub Actions when merging to a shared repository.
+
+### API Contract
+
+The dashboard API (`/api/mechas`) returns a `ports` array for backward compatibility with the frontend:
+```
+GET /api/mechas → [{ id, name, state, status, path, ports: [{ PublicPort, PrivatePort, Type }], created }]
+POST /api/mechas → { id, name, port, authToken } (body: { path, env?, claudeToken?, otp?, permissionMode? })
+```
+The service layer (`mechaLs`) returns `port` (number). The dashboard route maps this to the `ports` array shape.

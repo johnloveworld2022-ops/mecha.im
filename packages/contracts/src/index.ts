@@ -40,4 +40,5 @@ export {
   toHttpStatus,
   toExitCode,
   toUserMessage,
+  toSafeMessage,
 } from "./errors.js";

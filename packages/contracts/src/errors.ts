@@ -63,6 +63,14 @@ export function toExitCode(_err: unknown): number {
 
 export function toUserMessage(err: unknown): string {
   if (err instanceof ZodError) return `Validation error: ${err.issues.map(i => i.message).join("; ")}`;
+  if (err instanceof MechaError) return err.message;
   if (err instanceof Error) return err.message;
-  return "Unknown error";
+  return "An unexpected error occurred";
+}
+
+/** Sanitized message safe for HTTP responses (hides internal details for non-domain errors) */
+export function toSafeMessage(err: unknown): string {
+  if (err instanceof ZodError) return `Validation error: ${err.issues.map(i => i.message).join("; ")}`;
+  if (err instanceof MechaError) return err.message;
+  return "Internal error";
 }

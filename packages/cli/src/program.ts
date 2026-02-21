@@ -42,6 +42,9 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   };
 
   // Register all subcommands
+  // Note: Input validation (port, path, permission-mode, env) is handled
+  // by @mecha/service functions using @mecha/contracts schemas.
+  // CLI commands are thin wrappers that delegate to the service layer.
   registerDoctorCommand(program, deps);
   registerInitCommand(program, deps);
   registerUpCommand(program, deps);

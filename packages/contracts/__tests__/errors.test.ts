@@ -19,6 +19,7 @@ import {
   toHttpStatus,
   toExitCode,
   toUserMessage,
+  toSafeMessage,
 } from "../src/errors.js";
 
 describe("error classes", () => {
@@ -137,8 +138,28 @@ describe("toUserMessage", () => {
   });
 
   it("returns fallback for non-Error values", () => {
-    expect(toUserMessage("string")).toBe("Unknown error");
-    expect(toUserMessage(null)).toBe("Unknown error");
-    expect(toUserMessage(undefined)).toBe("Unknown error");
+    expect(toUserMessage("string")).toBe("An unexpected error occurred");
+    expect(toUserMessage(null)).toBe("An unexpected error occurred");
+    expect(toUserMessage(undefined)).toBe("An unexpected error occurred");
+  });
+});
+
+describe("toSafeMessage", () => {
+  it("returns domain error messages for MechaError", () => {
+    expect(toSafeMessage(new InvalidPortError(80))).toBe("Invalid port: 80 (must be 1024-65535)");
+  });
+
+  it("formats ZodError with issue messages", () => {
+    try {
+      z.object({ name: z.string().min(1) }).parse({ name: "" });
+    } catch (err) {
+      expect(toSafeMessage(err)).toMatch(/^Validation error:/);
+    }
+  });
+
+  it("hides internal error details for non-domain errors", () => {
+    expect(toSafeMessage(new Error("Docker socket /var/run/docker.sock failed"))).toBe("Internal error");
+    expect(toSafeMessage("string")).toBe("Internal error");
+    expect(toSafeMessage(null)).toBe("Internal error");
   });
 });

@@ -64,6 +64,8 @@ export async function getContainerPort(client: DockerClient, name: string): Prom
   return portStr ? parseInt(portStr, 10) : undefined;
 }
 
+// --- Lifecycle operations ---
+
 export async function startContainer(client: DockerClient, name: string): Promise<void> {
   await client.docker.getContainer(name).start();
 }
@@ -91,6 +93,8 @@ export async function listMechaContainers(client: DockerClient): Promise<Dockero
     filters: { label: [`${LABELS.IS_MECHA}=true`] },
   });
 }
+
+// --- Logging and exec ---
 
 export async function getContainerLogs(
   client: DockerClient,

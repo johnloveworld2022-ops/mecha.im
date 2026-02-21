@@ -78,6 +78,74 @@ function validatePermissionMode(mode: string | undefined): void {
   }
 }
 
+// --- Helpers ---
+
+/** Update or delete env vars in a map based on input fields. */
+type EnvFieldMap = Record<string, { envKey: string; value: string | undefined }>;
+function applyEnvUpdates(envMap: Map<string, string>, fields: EnvFieldMap): void {
+  for (const { envKey, value } of Object.values(fields)) {
+    if (value === undefined) continue;
+    if (value) envMap.set(envKey, value);
+    else envMap.delete(envKey);
+  }
+}
+
+/** Extract container options from inspect info for rollback purposes. */
+function extractContainerOpts(
+  info: Record<string, any>,
+  cName: string,
+  mechaId: MechaId,
+): { containerName: string; image: string; mechaId: MechaId; projectPath: string; volumeName: string; hostPort: number | undefined; env: string[] } {
+  const projectPath = info.Config?.Labels?.[LABELS.MECHA_PATH] ?? "";
+  const portBindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
+  const hostPort = Number(portBindings?.[0]?.HostPort ?? 0) || undefined;
+  const volumeBind = info.Mounts?.find((m: { Destination: string }) => m.Destination === MOUNT_PATHS.STATE);
+  const vName = volumeBind?.Name ?? "";
+  const env = (info.Config?.Env ?? []).filter((e: string) => !e.startsWith("MECHA_ID="));
+  return { containerName: cName, image: info.Config?.Image ?? DEFAULTS.IMAGE, mechaId, projectPath, volumeName: vName, hostPort, env };
+}
+
+/** Stop a container, tolerating already-stopped (409) state. */
+async function stopTolerant(client: DockerClient, cName: string): Promise<void> {
+  try {
+    await stopContainer(client, cName);
+  } catch (err) {
+    if (err instanceof Error && "statusCode" in err && (err as { statusCode: number }).statusCode === 409) {
+      return; // already stopped
+    }
+    throw err;
+  }
+}
+
+/** Recreate a container with rollback: remove → create → start. On failure, restore original config. */
+async function recreateWithRollback(
+  client: DockerClient,
+  cName: string,
+  newOpts: Parameters<typeof createContainer>[1],
+  originalOpts: Parameters<typeof createContainer>[1],
+): Promise<void> {
+  try {
+    await removeContainer(client, cName, true);
+    await createContainer(client, newOpts);
+    try {
+      await startContainer(client, cName);
+    } catch (startErr) {
+      try { await removeContainer(client, cName, true); } catch { /* best effort */ }
+      await createContainer(client, originalOpts);
+      await startContainer(client, cName);
+      throw new ContainerStartError(cName, startErr instanceof Error ? startErr : undefined);
+    }
+  } catch (err) {
+    if (!(err instanceof ContainerStartError)) {
+      try {
+        await createContainer(client, originalOpts);
+        await startContainer(client, cName);
+      } catch { /* rollback also failed */ }
+    }
+    throw err;
+  }
+}
+
 // --- 1. mechaUp ---
 export async function mechaUp(
   client: DockerClient,
@@ -122,7 +190,8 @@ export async function mechaUp(
   }
 
   // Resolve the actual port (may be Docker-assigned)
-  const actualPort = input.port ?? await getContainerPort(client, cName) ?? 0;
+  const actualPort = input.port ?? await getContainerPort(client, cName);
+  if (!actualPort) throw new NoPortBindingError(id);
 
   return { id, name: cName, port: actualPort, authToken };
 }
@@ -233,98 +302,33 @@ export async function mechaConfigure(
 
   validatePermissionMode(input.permissionMode);
 
-  const cName = containerName(input.id as MechaId);
+  const mechaId = input.id as MechaId;
+  const cName = containerName(mechaId);
   const info = await inspectContainer(client, cName);
+  const originalOpts = extractContainerOpts(info, cName, mechaId);
 
-  // Extract current config for rollback
-  const projectPath = info.Config?.Labels?.[LABELS.MECHA_PATH] ?? "";
-  const portBindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
-  const hostPort = Number(portBindings?.[0]?.HostPort ?? 0) || undefined;
-  const volumeBind = info.Mounts?.find((m) => m.Destination === MOUNT_PATHS.STATE);
-  const vName = volumeBind?.Name ?? "";
-
-  // Parse existing env vars
+  // Build updated env
   const envMap = new Map<string, string>();
   for (const entry of info.Config?.Env ?? []) {
     const eqIdx = entry.indexOf("=");
     if (eqIdx > 0) envMap.set(entry.slice(0, eqIdx), entry.slice(eqIdx + 1));
   }
 
-  // Update fields
-  if (input.claudeToken !== undefined) {
-    if (input.claudeToken) envMap.set("CLAUDE_CODE_OAUTH_TOKEN", input.claudeToken);
-    else envMap.delete("CLAUDE_CODE_OAUTH_TOKEN");
-  }
-  if (input.anthropicApiKey !== undefined) {
-    if (input.anthropicApiKey) envMap.set("ANTHROPIC_API_KEY", input.anthropicApiKey);
-    else envMap.delete("ANTHROPIC_API_KEY");
-  }
-  if (input.otp !== undefined) {
-    if (input.otp) envMap.set("MECHA_OTP", input.otp);
-    else envMap.delete("MECHA_OTP");
-  }
-  if (input.permissionMode !== undefined) {
-    if (input.permissionMode) envMap.set("MECHA_PERMISSION_MODE", input.permissionMode);
-    else envMap.delete("MECHA_PERMISSION_MODE");
-  }
+  applyEnvUpdates(envMap, {
+    claudeToken: { envKey: "CLAUDE_CODE_OAUTH_TOKEN", value: input.claudeToken },
+    anthropicApiKey: { envKey: "ANTHROPIC_API_KEY", value: input.anthropicApiKey },
+    otp: { envKey: "MECHA_OTP", value: input.otp },
+    permissionMode: { envKey: "MECHA_PERMISSION_MODE", value: input.permissionMode },
+  });
 
   const newEnv = Array.from(envMap.entries())
     .filter(([k]) => k !== "MECHA_ID")
     .map(([k, v]) => `${k}=${v}`);
 
-  const originalEnv = (info.Config?.Env ?? []).filter((e: string) => !e.startsWith("MECHA_ID="));
-  const originalOpts = {
-    containerName: cName,
-    image: info.Config?.Image ?? DEFAULTS.IMAGE,
-    mechaId: input.id as MechaId,
-    projectPath,
-    volumeName: vName,
-    hostPort,
-    env: originalEnv,
-  };
+  const newOpts = { ...originalOpts, env: newEnv };
 
-  // Stop (tolerate already-stopped)
-  try {
-    await stopContainer(client, cName);
-  } catch (err) {
-    if (err instanceof Error && "statusCode" in err && (err as { statusCode: number }).statusCode === 409) {
-      // already stopped
-    } else if (err instanceof ContainerNotFoundError) {
-      throw err;
-    } else {
-      throw err;
-    }
-  }
-
-  // Remove → Create → Start with rollback
-  try {
-    await removeContainer(client, cName, true);
-    await createContainer(client, {
-      containerName: cName,
-      image: DEFAULTS.IMAGE,
-      mechaId: input.id as MechaId,
-      projectPath,
-      volumeName: vName,
-      hostPort,
-      env: newEnv,
-    });
-    try {
-      await startContainer(client, cName);
-    } catch (startErr) {
-      try { await removeContainer(client, cName, true); } catch { /* best effort */ }
-      await createContainer(client, originalOpts);
-      await startContainer(client, cName);
-      throw new ContainerStartError(cName, startErr instanceof Error ? startErr : undefined);
-    }
-  } catch (err) {
-    if (!(err instanceof ContainerStartError)) {
-      try {
-        await createContainer(client, originalOpts);
-        await startContainer(client, cName);
-      } catch { /* rollback also failed */ }
-    }
-    throw err;
-  }
+  await stopTolerant(client, cName);
+  await recreateWithRollback(client, cName, newOpts, originalOpts);
 }
 
 // --- 11. mechaDoctor ---

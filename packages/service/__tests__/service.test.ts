@@ -141,6 +141,12 @@ describe("mechaUp", () => {
     await expect(mechaUp(client, { projectPath: tmpdir(), permissionMode: "yolo" as any })).rejects.toThrow(InvalidPermissionModeError);
   });
 
+  it("throws NoPortBindingError when dynamic port is unavailable", async () => {
+    mockGetContainerPort.mockResolvedValueOnce(undefined);
+
+    await expect(mechaUp(client, { projectPath: tmpdir() })).rejects.toThrow(NoPortBindingError);
+  });
+
   it("removes container on start failure (rollback)", async () => {
     mockStartContainer.mockRejectedValueOnce(new Error("port in use"));
 
