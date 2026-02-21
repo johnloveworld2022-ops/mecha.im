@@ -105,12 +105,16 @@ export function registerSessionRoutes(
       });
       reply.hijack();
 
+      // Detect client disconnect via socket close (not req.raw close which fires on body consumption)
+      let clientDisconnected = false;
+      req.socket.on("close", () => { clientDisconnected = true; });
+
       // Emit session event at stream start
       reply.raw.write(`data: ${JSON.stringify({ type: "session", session_id: id })}\n\n`);
 
       const stream = sm.sendMessage(id, body.message);
       for await (const msg of stream) {
-        if (req.raw.destroyed) break;
+        if (clientDisconnected) break;
         reply.raw.write(`data: ${JSON.stringify(msg)}\n\n`);
       }
 

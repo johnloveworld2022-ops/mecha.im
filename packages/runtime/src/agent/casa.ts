@@ -41,8 +41,8 @@ export function registerAgentRoutes(
 
       const abortController = new AbortController();
 
-      // Clean up if client disconnects
-      req.raw.on("close", () => {
+      // Clean up if client disconnects (use socket close, not req.raw close which fires on body consumption)
+      req.socket.on("close", () => {
         abortController.abort();
       });
 

@@ -55,6 +55,14 @@ Use `--port` / request body `port` field for deterministic assignment.
 All gates (`pnpm test`, `pnpm test:coverage`, `pnpm typecheck`, `pnpm build`) run locally.
 No CI/CD pipeline is configured yet. Add GitHub Actions when merging to a shared repository.
 
+### SSE Streaming: Client Disconnect Detection
+
+**DO NOT use `req.raw.destroyed` or `req.raw.on("close")` to detect client disconnects in Fastify SSE handlers.**
+
+`req.raw` (`IncomingMessage`) `destroyed` and `close` fire when the request body is consumed, NOT when the client disconnects. For POST endpoints this happens immediately after body parsing, breaking the SSE stream.
+
+**Use `req.socket.on("close")` instead** — the socket only closes when the TCP connection drops.
+
 ### API Contract
 
 The dashboard API (`/api/mechas`) returns a `ports` array for backward compatibility with the frontend:
