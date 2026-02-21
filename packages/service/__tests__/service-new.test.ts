@@ -566,4 +566,22 @@ describe("mechaSessionConfigUpdate", () => {
     expect(fetchCall[1].headers["Content-Type"]).toBe("application/json");
     expect(JSON.parse(fetchCall[1].body)).toEqual(config);
   });
+
+  it("mapSessionError maps 400 to Error with body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 400,
+      text: () => Promise.resolve("Invalid config"),
+    }));
+    await expect(mechaSessionCreate(client, { id: "mx-abc" })).rejects.toThrow("Bad request: Invalid config");
+  });
+
+  it("mapSessionError maps 503 to Error with body", async () => {
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
+      ok: false,
+      status: 503,
+      text: () => Promise.resolve("Sessions not available"),
+    }));
+    await expect(mechaSessionCreate(client, { id: "mx-abc" })).rejects.toThrow("Service unavailable: Sessions not available");
+  });
 });

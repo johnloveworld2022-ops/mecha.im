@@ -529,6 +529,8 @@ function mapSessionError(status: number, body: string, sessionId?: string): Erro
   if (status === 404) return new SessionNotFoundError(sessionId ?? "unknown");
   if (status === 409) return new SessionBusyError(sessionId ?? "unknown");
   if (status === 429) return new SessionCapReachedError();
+  if (status === 400) return new Error(`Bad request: ${body}`);
+  if (status === 503) return new Error(`Service unavailable: ${body}`);
   return new Error(`Session request failed: ${status} ${body}`);
 }
 
@@ -542,6 +544,7 @@ export async function mechaSessionCreate(
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ title: input.title, config: input.config }),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text());
   return res.json();
@@ -555,6 +558,7 @@ export async function mechaSessionList(
   const { url, token } = await getRuntimeAccess(client, input.id);
   const res = await fetch(`${url}/api/sessions`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text());
   return res.json();
@@ -566,8 +570,10 @@ export async function mechaSessionGet(
   input: SessionGetInputType,
 ): Promise<unknown> {
   const { url, token } = await getRuntimeAccess(client, input.id);
-  const res = await fetch(`${url}/api/sessions/${input.sessionId}`, {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await fetch(`${url}/api/sessions/${sid}`, {
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text(), input.sessionId);
   return res.json();
@@ -579,9 +585,11 @@ export async function mechaSessionDelete(
   input: SessionDeleteInputType,
 ): Promise<void> {
   const { url, token } = await getRuntimeAccess(client, input.id);
-  const res = await fetch(`${url}/api/sessions/${input.sessionId}`, {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await fetch(`${url}/api/sessions/${sid}`, {
     method: "DELETE",
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text(), input.sessionId);
 }
@@ -593,7 +601,8 @@ export async function mechaSessionMessage(
   signal?: AbortSignal,
 ): Promise<Response> {
   const { url, token } = await getRuntimeAccess(client, input.id);
-  const res = await fetch(`${url}/api/sessions/${input.sessionId}/message`, {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await fetch(`${url}/api/sessions/${sid}/message`, {
     method: "POST",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify({ message: input.message }),
@@ -609,9 +618,11 @@ export async function mechaSessionInterrupt(
   input: SessionInterruptInputType,
 ): Promise<{ interrupted: boolean }> {
   const { url, token } = await getRuntimeAccess(client, input.id);
-  const res = await fetch(`${url}/api/sessions/${input.sessionId}/interrupt`, {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await fetch(`${url}/api/sessions/${sid}/interrupt`, {
     method: "POST",
     headers: { Authorization: `Bearer ${token}` },
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text(), input.sessionId);
   return res.json() as Promise<{ interrupted: boolean }>;
@@ -623,10 +634,12 @@ export async function mechaSessionConfigUpdate(
   input: SessionConfigUpdateInputType,
 ): Promise<unknown> {
   const { url, token } = await getRuntimeAccess(client, input.id);
-  const res = await fetch(`${url}/api/sessions/${input.sessionId}/config`, {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await fetch(`${url}/api/sessions/${sid}/config`, {
     method: "PUT",
     headers: { "Content-Type": "application/json", Authorization: `Bearer ${token}` },
     body: JSON.stringify(input.config),
+    signal: AbortSignal.timeout(30_000),
   });
   if (!res.ok) throw mapSessionError(res.status, await res.text(), input.sessionId);
   return res.json();

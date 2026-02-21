@@ -3,7 +3,6 @@ import type { SessionManager } from "./session-manager.js";
 import {
   SessionNotFoundError,
   SessionBusyError,
-  SessionCapReachedError,
   SessionConfig,
   toHttpStatus,
   toSafeMessage,
@@ -82,8 +81,11 @@ export function registerSessionRoutes(
   app.post("/api/sessions/:id/message", async (req, reply) => {
     const { id } = req.params as { id: string };
     const body = req.body as { message?: string } | null;
-    if (!body?.message) {
+    if (!body?.message || typeof body.message !== "string") {
       return reply.code(400).send({ error: "Missing 'message' field" });
+    }
+    if (body.message.length > 100_000) {
+      return reply.code(400).send({ error: "Message too long (max 100000 characters)" });
     }
 
     // Validate session exists and is not busy before starting stream
@@ -115,7 +117,7 @@ export function registerSessionRoutes(
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();
     } catch (err) {
-      if (err instanceof SessionNotFoundError || err instanceof SessionBusyError || err instanceof SessionCapReachedError) {
+      if (err instanceof SessionNotFoundError || err instanceof SessionBusyError) {
         if (!reply.raw.headersSent) {
           return reply.code(toHttpStatus(err)).send({ error: toSafeMessage(err) });
         }

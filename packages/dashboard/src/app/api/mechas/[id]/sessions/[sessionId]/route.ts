@@ -5,10 +5,8 @@ import { getDockerClient } from "@/lib/docker";
 import { withAuth } from "@/lib/api-auth";
 import { handleDockerError } from "@/lib/docker-errors";
 
-export const GET = withAuth(async (request: NextRequest, { params }) => {
+export const GET = withAuth(async (_request: NextRequest, { params }) => {
   const { id, sessionId } = await params;
-  const limit = Number(request.nextUrl.searchParams.get("limit") ?? "50");
-  const offset = Number(request.nextUrl.searchParams.get("offset") ?? "0");
   const client = getDockerClient();
   try {
     const session = await mechaSessionGet(client, { id, sessionId });

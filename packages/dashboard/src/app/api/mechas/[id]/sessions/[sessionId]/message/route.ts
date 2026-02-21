@@ -28,9 +28,16 @@ export async function POST(
     });
   }
 
+  const MAX_MESSAGE_LENGTH = 100_000;
   const message = body.message ?? "";
   if (!message) {
     return new Response(JSON.stringify({ error: "Message is required" }), {
+      status: 400,
+      headers: { "Content-Type": "application/json" },
+    });
+  }
+  if (message.length > MAX_MESSAGE_LENGTH) {
+    return new Response(JSON.stringify({ error: `Message too long (max ${MAX_MESSAGE_LENGTH} characters)` }), {
       status: 400,
       headers: { "Content-Type": "application/json" },
     });

@@ -10,7 +10,7 @@ export type PermissionMode = z.infer<typeof PermissionMode>;
 export const BLOCKED_ENV_KEYS = new Set([
   "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
   "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "MECHA_OTP",
-  "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN", "MECHA_ID",
+  "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN", "MECHA_ID", "MECHA_DB_PATH",
 ]);
 
 /** Pattern for allowed env var keys */

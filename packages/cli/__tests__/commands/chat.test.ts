@@ -252,6 +252,16 @@ describe("mecha chat", () => {
     writeSpy.mockRestore();
   });
 
+  it("rejects --session and --new-session together", async () => {
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hi", "--session", "s1", "--new-session"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith("Cannot use --session and --new-session together");
+    expect(process.exitCode).toBe(1);
+    writeSpy.mockRestore();
+  });
+
   it("--session reports error on failure", async () => {
     mockMechaSessionMessage.mockRejectedValueOnce(new Error("session not found"));
     const program = new Command();

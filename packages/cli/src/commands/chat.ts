@@ -51,6 +51,11 @@ export function registerChatCommand(parent: Command, deps: CommandDeps): void {
     .action(async (id: string, message: string, opts: { session?: string; newSession?: boolean }) => {
       const { dockerClient, formatter } = deps;
       try {
+        if (opts.session && opts.newSession) {
+          formatter.error("Cannot use --session and --new-session together");
+          process.exitCode = 1;
+          return;
+        }
         if (opts.session) {
           // Send to existing session
           const res = await mechaSessionMessage(dockerClient, { id, sessionId: opts.session, message });

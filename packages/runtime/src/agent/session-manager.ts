@@ -86,7 +86,7 @@ export class SessionManager {
     if (!row) return undefined;
 
     const messages = this.db.prepare(
-      "SELECT role, content, created_at FROM session_messages WHERE session_id = ? ORDER BY created_at ASC LIMIT ? OFFSET ?",
+      "SELECT role, content, created_at FROM session_messages WHERE session_id = ? ORDER BY created_at ASC, id ASC LIMIT ? OFFSET ?",
     ).all(id, limit, offset) as Array<{ role: string; content: string; created_at: string }>;
 
     const totalMessages = (this.db.prepare(
@@ -162,6 +162,7 @@ export class SessionManager {
     ).run(sessionId, message);
 
     let assistantText = "";
+    let caughtError: unknown = undefined;
     try {
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -188,11 +189,10 @@ export class SessionManager {
           this.db.prepare("UPDATE sessions SET sdk_session_id = ? WHERE id = ?").run(row.sdk_session_id, sessionId);
         }
 
-        // Accumulate assistant text
-
+        // Accumulate assistant text — SDK sends full text per assistant message
         if (sdkMsg.type === "assistant" && sdkMsg.message) {
           const content = (sdkMsg.message as Record<string, unknown>).content as Array<Record<string, unknown>> | undefined;
-    
+
           if (Array.isArray(content)) {
             const textParts = content
               .filter((b) => b.type === "text" && typeof b.text === "string")
@@ -204,19 +204,10 @@ export class SessionManager {
 
         yield msg;
       }
-
-      // Insert assistant message and mark idle
-
-      if (assistantText) {
-        this.db.prepare(
-          "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'assistant', ?)",
-        ).run(sessionId, assistantText);
-      }
-      this.db.prepare(
-        "UPDATE sessions SET state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now') WHERE id = ?",
-      ).run(sessionId);
     } catch (err) {
-      // On error: save partial content, mark idle
+      caughtError = err;
+    } finally {
+      // Always: save content, mark idle, clean up
       if (assistantText) {
         this.db.prepare(
           "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'assistant', ?)",
@@ -226,9 +217,8 @@ export class SessionManager {
         "UPDATE sessions SET state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now') WHERE id = ?",
       ).run(sessionId);
       this.active.delete(sessionId);
-      throw err;
     }
-    this.active.delete(sessionId);
+    if (caughtError) throw caughtError;
   }
 
   interrupt(sessionId: string): boolean {

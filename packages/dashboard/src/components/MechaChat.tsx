@@ -82,6 +82,27 @@ function createMechaAdapter(mechaId: string, sessionId: string | null): ChatMode
           }
         }
       }
+
+      // Flush residual buffer at EOF
+      if (buffer.trim()) {
+        const trimmed = buffer.trim();
+        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            const result = extractText(event);
+            if (result) {
+              if (result.mode === "full") {
+                fullText = result.text;
+              } else {
+                fullText += result.text;
+              }
+              yield { content: [{ type: "text" as const, text: fullText }] };
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
     },
   };
 }
