@@ -502,6 +502,18 @@ describe("SessionManager", () => {
 
   // --- cleanup cleans active map ---
 
+  it("cleanup() keeps active entries that still exist in DB", () => {
+    const session = sm.create();
+    const activeMap = (sm as unknown as { active: Map<string, { abortController: AbortController }> }).active;
+    // Session exists in DB AND is in active map
+    activeMap.set(session.sessionId, { abortController: new AbortController() });
+
+    sm.cleanup();
+
+    // Should NOT be removed from active map because the session still exists in DB
+    expect(activeMap.has(session.sessionId)).toBe(true);
+  });
+
   it("cleanup() removes stale entries from active map", () => {
     const activeMap = (sm as unknown as { active: Map<string, { abortController: AbortController }> }).active;
     // Add a stale entry (session doesn't exist in DB)
@@ -597,6 +609,61 @@ describe("SessionManager", () => {
     expect(callArgs.options.permissionMode).toBe("default");
   });
 
+  it("sendMessage() handles assistant message without message property", async () => {
+    const session = sm.create();
+
+    mockQuery.mockReturnValue(
+      createMockStream([
+        { type: "assistant", session_id: "sdk-nomsg" },
+      ]),
+    );
+
+    for await (const _msg of sm.sendMessage(session.sessionId, "hello")) {
+      // consume
+    }
+
+    const detail = sm.get(session.sessionId);
+    // Only user message — assistant had no message property
+    expect(detail?.messages).toHaveLength(1);
+  });
+
+  it("sendMessage() handles assistant message with no content array", async () => {
+    const session = sm.create();
+
+    mockQuery.mockReturnValue(
+      createMockStream([
+        { type: "assistant", message: { content: "not-an-array" }, session_id: "sdk-noarr" },
+      ]),
+    );
+
+    for await (const _msg of sm.sendMessage(session.sessionId, "hello")) {
+      // consume
+    }
+
+    const detail = sm.get(session.sessionId);
+    // User message present, but no assistant text since content was not an array
+    expect(detail?.messages).toHaveLength(1);
+    expect(detail?.messages[0].role).toBe("user");
+  });
+
+  it("sendMessage() handles assistant message with non-text content blocks", async () => {
+    const session = sm.create();
+
+    mockQuery.mockReturnValue(
+      createMockStream([
+        { type: "assistant", message: { content: [{ type: "tool_use", id: "t1" }] }, session_id: "sdk-notxt" },
+      ]),
+    );
+
+    for await (const _msg of sm.sendMessage(session.sessionId, "hello")) {
+      // consume
+    }
+
+    const detail = sm.get(session.sessionId);
+    // Only user message — no text blocks in assistant content
+    expect(detail?.messages).toHaveLength(1);
+  });
+
   // --- startCleanup interval actually runs cleanup ---
 
   it("startCleanup() interval callback invokes cleanup()", () => {
@@ -622,6 +689,17 @@ describe("SessionManager", () => {
   });
 
   // --- resetBusySessions ---
+
+  it("shutdown() without startCleanup() still works", () => {
+    const session = sm.create();
+    db.prepare("UPDATE sessions SET state = 'busy' WHERE id = ?").run(session.sessionId);
+
+    // Don't call startCleanup(), so cleanupInterval is null
+    sm.shutdown();
+
+    const updated = sm.get(session.sessionId);
+    expect(updated?.state).toBe("idle");
+  });
 
   it("resetBusySessions() sets all busy to idle", () => {
     db.prepare(

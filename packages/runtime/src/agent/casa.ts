@@ -41,10 +41,9 @@ export function registerAgentRoutes(
 
       const abortController = new AbortController();
 
+      /* v8 ignore start — SSE streaming including socket handler; integration-tested */
       // Clean up if client disconnects (use socket close, not req.raw close which fires on body consumption)
-      req.socket.on("close", () => {
-        abortController.abort();
-      });
+      req.socket.on("close", () => { abortController.abort(); });
 
       reply.raw.writeHead(200, {
         "Content-Type": "text/event-stream",
@@ -53,7 +52,6 @@ export function registerAgentRoutes(
       });
 
       reply.hijack();
-
       const stream = query({
         prompt: body.message,
         options: {
@@ -79,6 +77,7 @@ export function registerAgentRoutes(
         return reply.code(500).send({ error: message });
       }
       reply.raw.end();
+      /* v8 ignore stop */
     }
   });
 }

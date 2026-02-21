@@ -347,4 +347,250 @@ describe("Session routes", () => {
 
     expect(res.statusCode).toBe(404);
   });
+
+  it("POST /api/sessions with null body defaults to empty object", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+    });
+
+    expect(res.statusCode).toBe(201);
+  });
+
+  it("GET /api/sessions/:id with NaN limit/offset uses defaults", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}?limit=abc&offset=xyz`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.sessionId).toBe(sessionId);
+  });
+
+  it("GET /api/sessions/:id with no query params uses defaults", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("GET /api/sessions/:id with very large limit is capped at 200", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}?limit=9999`,
+    });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  // --- Additional coverage: POST /api/sessions with invalid config ---
+
+  it("POST /api/sessions with valid config stores config", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { title: "Configured", config: { maxTurns: 10 } },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.title).toBe("Configured");
+  });
+
+  it("POST /api/sessions with invalid config returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { config: { maxTurns: -1 } },
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Invalid config");
+  });
+
+  // --- Additional coverage: POST /api/sessions/:id/message streaming ---
+
+  it("POST /api/sessions/:id/message streams SSE response", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: { message: "hello" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.headers["content-type"]).toBe("text/event-stream");
+    expect(res.body).toContain("data: ");
+    expect(res.body).toContain("[DONE]");
+    // Should contain the session event
+    expect(res.body).toContain(`"session_id":"${sessionId}"`);
+  });
+
+  it("POST /api/sessions/:id/message with empty stream still sends DONE", async () => {
+    ({ app, db } = createTestApp());
+    // Need to mock query to return empty stream
+    const { query: mockQuery } = await import("@anthropic-ai/claude-agent-sdk");
+    const original = vi.mocked(mockQuery);
+    original.mockReturnValueOnce(
+      (async function* () {
+        // yield nothing — empty stream
+      })() as any,
+    );
+
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: { message: "hello" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(res.body).toContain("[DONE]");
+  });
+
+  it("POST /api/sessions/:id/message on busy session returns 409", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    // Mark session as busy
+    db!.prepare("UPDATE sessions SET state = 'busy' WHERE id = ?").run(sessionId);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: { message: "hello" },
+    });
+
+    expect(res.statusCode).toBe(409);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("busy");
+  });
+
+  it("POST /api/sessions/:id/message with too long message returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: { message: "x".repeat(100_001) },
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toContain("too long");
+  });
+
+  it("POST /api/sessions/:id/message with non-string message returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: { message: 123 },
+    });
+
+    expect(res.statusCode).toBe(400);
+  });
+
+  // --- Additional coverage: PUT /api/sessions/:id/config on busy ---
+
+  it("PUT /api/sessions/:id/config on busy session returns 409", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    db!.prepare("UPDATE sessions SET state = 'busy' WHERE id = ?").run(sessionId);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/sessions/${sessionId}/config`,
+      payload: { maxTurns: 10 },
+    });
+
+    expect(res.statusCode).toBe(409);
+  });
+
+  // --- All 503 unavailable routes ---
+
+  it("all session routes return 503 when no agent/db configured", async () => {
+    ({ app, db } = createTestApp({ withAgent: false, withDb: false }));
+
+    const routes = [
+      { method: "GET" as const, url: "/api/sessions" },
+      { method: "GET" as const, url: "/api/sessions/some-id" },
+      { method: "DELETE" as const, url: "/api/sessions/some-id" },
+      { method: "POST" as const, url: "/api/sessions/some-id/message", payload: { message: "hi" } },
+      { method: "POST" as const, url: "/api/sessions/some-id/interrupt" },
+      { method: "PUT" as const, url: "/api/sessions/some-id/config", payload: { maxTurns: 5 } },
+    ];
+
+    for (const route of routes) {
+      const res = await app.inject(route);
+      expect(res.statusCode).toBe(503);
+    }
+  });
 });
