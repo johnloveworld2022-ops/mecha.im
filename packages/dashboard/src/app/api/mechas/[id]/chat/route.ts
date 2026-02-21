@@ -57,8 +57,9 @@ export async function POST(
   }
 
   // Forward the request body to runtime
-  // Runtime expects { message: string }, not { messages: [...] }
-  let body: { messages?: Array<{ role: string; content: string }> };
+  // Runtime expects { message: string }
+  // Accept both { message: string } (preferred) and legacy { messages: [...] }
+  let body: { message?: string; messages?: Array<{ role: string; content: string }> };
   try {
     body = await request.json() as typeof body;
   } catch {
@@ -67,10 +68,15 @@ export async function POST(
       headers: { "Content-Type": "application/json" },
     });
   }
-  const messages = body.messages ?? [];
-  // Extract the last user message as the prompt
-  const lastUserMsg = messages.filter((m) => m.role === "user").pop();
-  const message = lastUserMsg?.content ?? "";
+  let message: string;
+  if (typeof body.message === "string") {
+    message = body.message;
+  } else {
+    // Legacy: extract the last user message from the messages array
+    const messages = body.messages ?? [];
+    const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+    message = lastUserMsg?.content ?? "";
+  }
 
   // Build auth headers for runtime request:
   // 1. Bearer token if MECHA_AUTH_TOKEN is in container env

@@ -11,98 +11,82 @@ type AssistantContentPart = ChatModelRunUpdate["content"][number];
 function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamComplete?: () => void): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
-      let res: Response;
-
-      if (sessionId) {
-        // Session-based: send only the latest user message
+      try {
+        // Both session and stateless paths send only the latest user message
         const lastUserMsg = messages.filter((m) => m.role === "user").pop();
         const message = lastUserMsg?.content
           .filter((c) => c.type === "text")
           .map((c) => c.text)
           .join("") ?? "";
 
-        res = await fetch(`/api/mechas/${mechaId}/sessions/${sessionId}/message`, {
+        const url = sessionId
+          ? `/api/mechas/${mechaId}/sessions/${sessionId}/message`
+          : `/api/mechas/${mechaId}/chat`;
+
+        const res = await fetch(url, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
           body: JSON.stringify({ message }),
           signal: abortSignal,
         });
-      } else {
-        // Stateless: send full message history
-        res = await fetch(`/api/mechas/${mechaId}/chat`, {
-          method: "POST",
-          headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({
-            messages: messages.map((m) => ({
-              role: m.role,
-              content: m.content
-                .filter((c) => c.type === "text")
-                .map((c) => c.text)
-                .join(""),
-            })),
-          }),
-          signal: abortSignal,
-        });
-      }
 
-      if (!res.ok) {
-        throw new Error(`HTTP ${res.status}: ${res.statusText}`);
-      }
-
-      const reader = res.body?.getReader();
-      if (!reader) throw new Error("No response body");
-
-      const decoder = new TextDecoder();
-      let buffer = "";
-      let latestParts: AssistantContentPart[] = [];
-
-      while (true) {
-        const { done, value } = await reader.read();
-        if (done) break;
-
-        buffer += decoder.decode(value, { stream: true });
-        const lines = buffer.split("\n");
-        buffer = lines.pop() ?? "";
-
-        for (const line of lines) {
-          const trimmed = line.trim();
-          if (!trimmed || trimmed.startsWith(":") || trimmed === "data: [DONE]") continue;
-          if (!trimmed.startsWith("data: ")) continue;
-
-          try {
-            const event = JSON.parse(trimmed.slice(6));
-            const result = extractContentParts(event);
-            if (result) {
-              latestParts = applyResult(latestParts, result);
-              yield { content: latestParts };
-            }
-          } catch {
-            // skip malformed
-          }
+        if (!res.ok) {
+          throw new Error(`HTTP ${res.status}: ${res.statusText}`);
         }
-      }
 
-      // Flush residual buffer at EOF
-      if (buffer.trim()) {
-        const trimmed = buffer.trim();
-        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
-          try {
-            const event = JSON.parse(trimmed.slice(6));
-            const result = extractContentParts(event);
-            if (result) {
-              latestParts = applyResult(latestParts, result);
-              yield { content: latestParts };
-            }
-          } catch {
-            // skip malformed
-          }
-        }
-      }
+        const reader = res.body?.getReader();
+        if (!reader) throw new Error("No response body");
 
-      // Notify parent that stream finished (for refreshing session list counts)
-      onStreamComplete?.();
+        yield* readSSEStream(reader);
+      } finally {
+        onStreamComplete?.();
+      }
     },
   };
+}
+
+async function* readSSEStream(reader: ReadableStreamDefaultReader<Uint8Array>): AsyncGenerator<{ content: AssistantContentPart[] }> {
+  const decoder = new TextDecoder();
+  let buffer = "";
+  let latestParts: AssistantContentPart[] = [];
+
+  while (true) {
+    const { done, value } = await reader.read();
+    if (done) break;
+
+    buffer += decoder.decode(value, { stream: true });
+    const lines = buffer.split("\n");
+    buffer = lines.pop() ?? "";
+
+    for (const line of lines) {
+      latestParts = processLine(line, latestParts);
+    }
+    if (latestParts.length > 0) yield { content: latestParts };
+  }
+
+  // Flush trailing multibyte characters from the decoder
+  buffer += decoder.decode();
+
+  // Flush residual buffer at EOF
+  if (buffer.trim()) {
+    latestParts = processLine(buffer, latestParts);
+    if (latestParts.length > 0) yield { content: latestParts };
+  }
+}
+
+function processLine(line: string, current: AssistantContentPart[]): AssistantContentPart[] {
+  const trimmed = line.trim();
+  if (!trimmed || trimmed.startsWith(":") || trimmed === "data: [DONE]") return current;
+  if (!trimmed.startsWith("data: ")) return current;
+
+  try {
+    const event = JSON.parse(trimmed.slice(6));
+    const result = extractContentParts(event);
+    if (result) return applyResult(current, result);
+  } catch {
+    // skip malformed
+  }
+  return current;
 }
 
 function applyResult(current: AssistantContentPart[], result: NonNullable<ExtractResult>): AssistantContentPart[] {

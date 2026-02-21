@@ -78,16 +78,15 @@
 /* Backward-compat aliases for existing inline-styled components */
 :root {
   --bg: var(--background);
+  --bg-primary: var(--background);
   --bg-secondary: var(--card);
-  --bg-hover: var(--accent);
   --text: var(--foreground);
+  --text-primary: var(--foreground);
   --text-muted: var(--muted-foreground);
   /* --border already maps via shadcn */
-  --accent-hover: var(--primary);
   --success: oklch(0.65 0.18 145);
   --warning: oklch(0.75 0.17 75);
   --danger: var(--destructive);
-  --danger-hover: var(--destructive);
 }
 
 @layer base {
@@ -96,13 +95,7 @@
   }
 }
 
-*,
-*::before,
-*::after {
-  box-sizing: border-box;
-  margin: 0;
-  padding: 0;
-}
+/* Tailwind preflight handles box-sizing; only reset margin/padding on body */
 
 html,
 body {
