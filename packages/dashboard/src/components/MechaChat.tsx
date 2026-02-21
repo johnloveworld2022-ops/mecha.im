@@ -2,8 +2,11 @@
 
 import { useMemo } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
-import { useLocalRuntime, type ChatModelAdapter } from "@assistant-ui/react";
+import { useLocalRuntime, type ChatModelAdapter, type ChatModelRunUpdate } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
+
+type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue };
+type AssistantContentPart = ChatModelRunUpdate["content"][number];
 
 function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamComplete?: () => void): ChatModelAdapter {
   return {
@@ -51,7 +54,7 @@ function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamC
 
       const decoder = new TextDecoder();
       let buffer = "";
-      let fullText = "";
+      let latestParts: AssistantContentPart[] = [];
 
       while (true) {
         const { done, value } = await reader.read();
@@ -68,14 +71,10 @@ function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamC
 
           try {
             const event = JSON.parse(trimmed.slice(6));
-            const result = extractText(event);
+            const result = extractContentParts(event);
             if (result) {
-              if (result.mode === "full") {
-                fullText = result.text;
-              } else {
-                fullText += result.text;
-              }
-              yield { content: [{ type: "text" as const, text: fullText }] };
+              latestParts = applyResult(latestParts, result);
+              yield { content: latestParts };
             }
           } catch {
             // skip malformed
@@ -89,14 +88,10 @@ function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamC
         if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
           try {
             const event = JSON.parse(trimmed.slice(6));
-            const result = extractText(event);
+            const result = extractContentParts(event);
             if (result) {
-              if (result.mode === "full") {
-                fullText = result.text;
-              } else {
-                fullText += result.text;
-              }
-              yield { content: [{ type: "text" as const, text: fullText }] };
+              latestParts = applyResult(latestParts, result);
+              yield { content: latestParts };
             }
           } catch {
             // skip malformed
@@ -110,31 +105,64 @@ function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamC
   };
 }
 
-type ExtractResult = { mode: "full" | "delta"; text: string } | null;
+function applyResult(current: AssistantContentPart[], result: NonNullable<ExtractResult>): AssistantContentPart[] {
+  if (result.mode === "full") return result.parts;
+  // Delta mode always produces a single text part
+  const deltaPart = result.parts[0];
+  if (!deltaPart || deltaPart.type !== "text") return current;
+  const lastPart = current[current.length - 1];
+  if (lastPart && lastPart.type === "text") {
+    return [
+      ...current.slice(0, -1),
+      { type: "text" as const, text: lastPart.text + deltaPart.text },
+    ];
+  }
+  return [...current, deltaPart];
+}
 
-function extractText(event: Record<string, unknown>): ExtractResult {
-  // Claude Code SSE: {"type":"assistant","message":{"content":[{"type":"text","text":"..."}]}}
-  // This sends the full accumulated text each time, so use "full" mode to replace
+type ExtractResult = { mode: "full" | "delta"; parts: AssistantContentPart[] } | null;
+
+function extractContentParts(event: Record<string, unknown>): ExtractResult {
+  // Claude Code SSE: {"type":"assistant","message":{"content":[{"type":"text","text":"..."},{"type":"tool_use","id":"...","name":"...","input":{...}}]}}
+  // This sends the full accumulated content each time, so use "full" mode to replace
   if (event.type === "assistant") {
     const msg = event.message as Record<string, unknown> | undefined;
     if (msg && Array.isArray(msg.content)) {
-      const texts = (msg.content as Array<Record<string, unknown>>)
-        .filter((c) => c.type === "text" && typeof c.text === "string")
-        .map((c) => c.text as string);
-      if (texts.length > 0) return { mode: "full", text: texts.join("") };
+      const parts: AssistantContentPart[] = [];
+      for (const block of msg.content as Array<Record<string, unknown>>) {
+        if (block.type === "text" && typeof block.text === "string") {
+          parts.push({ type: "text" as const, text: block.text });
+        } else if (block.type === "tool_use" && typeof block.name === "string") {
+          const input = (block.input ?? {}) as Record<string, JSONValue>;
+          parts.push({
+            type: "tool-call" as const,
+            toolCallId: (block.id as string) ?? crypto.randomUUID(),
+            toolName: block.name,
+            args: input,
+            argsText: JSON.stringify(input, null, 2),
+          });
+        }
+      }
+      if (parts.length > 0) return { mode: "full", parts };
     }
   }
-  // Anthropic streaming: content_block_delta (incremental)
+  // Anthropic streaming: content_block_delta (incremental, text only)
   if (event.type === "content_block_delta") {
     const delta = event.delta as Record<string, unknown> | undefined;
-    if (delta?.type === "text_delta" && typeof delta.text === "string") return { mode: "delta", text: delta.text };
+    if (delta?.type === "text_delta" && typeof delta.text === "string") {
+      return { mode: "delta", parts: [{ type: "text", text: delta.text }] };
+    }
   }
-  if (event.type === "text" && typeof event.text === "string") return { mode: "delta", text: event.text };
-  // OpenAI-style (incremental)
+  if (event.type === "text" && typeof event.text === "string") {
+    return { mode: "delta", parts: [{ type: "text", text: event.text }] };
+  }
+  // OpenAI-style (incremental, text only)
   if (Array.isArray(event.choices)) {
     const choice = (event.choices as Array<Record<string, unknown>>)[0];
     const delta = choice?.delta as Record<string, unknown> | undefined;
-    if (typeof delta?.content === "string") return { mode: "delta", text: delta.content };
+    if (typeof delta?.content === "string") {
+      return { mode: "delta", parts: [{ type: "text", text: delta.content }] };
+    }
   }
   return null;
 }
@@ -151,7 +179,7 @@ export function MechaChat({ mechaId, sessionId = null, onStreamComplete }: Mecha
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div style={{ height: "500px", borderRadius: "8px", overflow: "hidden", border: "1px solid var(--border)" }}>
+      <div className="h-[500px] rounded-lg overflow-hidden border border-border">
         <Thread />
       </div>
     </AssistantRuntimeProvider>
