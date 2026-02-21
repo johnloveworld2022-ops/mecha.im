@@ -1,6 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import type { AgentOptions } from "./casa.js";
+import { PERMISSION_MAP } from "./casa.js";
 import type { SessionConfigType } from "@mecha/contracts";
 import {
   SessionNotFoundError,
@@ -10,13 +11,6 @@ import {
 
 export const MAX_SESSIONS = 50;
 export const SESSION_TTL_MS = 3_600_000; // 1 hour
-
-type PermissionMode = "acceptEdits" | "plan" | "default";
-const PERMISSION_MAP: Record<string, PermissionMode> = {
-  "full-auto": "acceptEdits",
-  plan: "plan",
-  default: "default",
-};
 
 export interface SessionSummary {
   sessionId: string;
@@ -145,14 +139,22 @@ export class SessionManager {
   }
 
   async *sendMessage(sessionId: string, message: string): AsyncIterable<unknown> {
-    const row = this.db.prepare("SELECT id, sdk_session_id, state, config FROM sessions WHERE id = ?").get(sessionId) as {
-      id: string; sdk_session_id: string | null; state: string; config: string;
-    } | undefined;
-    if (!row) throw new SessionNotFoundError(sessionId);
-    if (row.state === "busy") throw new SessionBusyError(sessionId);
-
-    // Mark busy
-    this.db.prepare("UPDATE sessions SET state = 'busy', updated_at = datetime('now') WHERE id = ?").run(sessionId);
+    // Atomic SELECT + mark busy in a single IMMEDIATE transaction to prevent TOCTOU race
+    const markBusy = this.db.transaction(() => {
+      const r = this.db.prepare(
+        "SELECT id, sdk_session_id, config FROM sessions WHERE id = ? AND state = 'idle'",
+      ).get(sessionId) as { id: string; sdk_session_id: string | null; config: string } | undefined;
+      if (!r) {
+        const exists = this.db.prepare("SELECT id FROM sessions WHERE id = ?").get(sessionId);
+        if (!exists) throw new SessionNotFoundError(sessionId);
+        throw new SessionBusyError(sessionId);
+      }
+      this.db.prepare(
+        "UPDATE sessions SET state = 'busy', updated_at = datetime('now') WHERE id = ?",
+      ).run(sessionId);
+      return r;
+    });
+    const row = markBusy.immediate();
     const abortController = new AbortController();
     this.active.set(sessionId, { abortController });
 
@@ -252,7 +254,7 @@ export class SessionManager {
   cleanup(): number {
     const cutoff = new Date(Date.now() - SESSION_TTL_MS).toISOString().replace("T", " ").slice(0, 19);
     const result = this.db.prepare(
-      "DELETE FROM sessions WHERE state = 'idle' AND updated_at < ? AND last_message_at IS NULL OR (state = 'idle' AND last_message_at < ? AND updated_at < ?)",
+      "DELETE FROM sessions WHERE state = 'idle' AND ((updated_at < ? AND last_message_at IS NULL) OR (last_message_at < ? AND updated_at < ?))",
     ).run(cutoff, cutoff, cutoff);
 
     // Also clean up from active map

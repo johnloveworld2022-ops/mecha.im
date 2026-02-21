@@ -358,7 +358,7 @@ describe("mechaSessionCreate", () => {
     const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions");
     expect(fetchCall[1].method).toBe("POST");
-    expect(fetchCall[1].headers.Authorization).toBe("Bearer test-token");
+    expect(fetchCall[1].headers.get("Authorization")).toBe("Bearer test-token");
     expect(JSON.parse(fetchCall[1].body)).toHaveProperty("title", "My Session");
   });
 
@@ -426,7 +426,7 @@ describe("mechaSessionList", () => {
     expect(result).toEqual(sessions);
     const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions");
-    expect(fetchCall[1].headers.Authorization).toBe("Bearer test-token");
+    expect(fetchCall[1].headers.get("Authorization")).toBe("Bearer test-token");
   });
 });
 
@@ -563,7 +563,7 @@ describe("mechaSessionConfigUpdate", () => {
     const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions/sess-cfg/config");
     expect(fetchCall[1].method).toBe("PUT");
-    expect(fetchCall[1].headers["Content-Type"]).toBe("application/json");
+    expect(fetchCall[1].headers.get("Content-Type")).toBe("application/json");
     expect(JSON.parse(fetchCall[1].body)).toEqual(config);
   });
 

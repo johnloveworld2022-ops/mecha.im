@@ -7,8 +7,8 @@ export interface AgentOptions {
   permissionMode?: "default" | "plan" | "full-auto";
 }
 
-type PermissionMode = "acceptEdits" | "plan" | "default";
-const PERMISSION_MAP: Record<string, PermissionMode> = { "full-auto": "acceptEdits", plan: "plan", default: "default" };
+export type SdkPermissionMode = "acceptEdits" | "plan" | "default";
+export const PERMISSION_MAP: Record<string, SdkPermissionMode> = { "full-auto": "acceptEdits", plan: "plan", default: "default" };
 
 /**
  * Register agent chat routes on Fastify.

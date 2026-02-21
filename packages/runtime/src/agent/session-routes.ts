@@ -88,13 +88,19 @@ export function registerSessionRoutes(
       return reply.code(400).send({ error: "Message too long (max 100000 characters)" });
     }
 
-    // Validate session exists and is not busy before starting stream
-    const session = sm.get(id);
-    if (!session) {
-      return reply.code(404).send({ error: `Session not found: ${id}` });
-    }
-    if (session.state === "busy") {
-      return reply.code(409).send({ error: `Session is busy: ${id}` });
+    // Use an explicit iterator so we can:
+    // 1. Pull the first value to trigger the atomic session check BEFORE SSE headers
+    // 2. Guarantee cleanup (it.return()) on all exit paths via finally
+    const it = sm.sendMessage(id, body.message)[Symbol.asyncIterator]();
+
+    let firstResult: IteratorResult<unknown>;
+    try {
+      firstResult = await it.next();
+    } catch (err) {
+      if (err instanceof SessionNotFoundError || err instanceof SessionBusyError) {
+        return reply.code(toHttpStatus(err)).send({ error: toSafeMessage(err) });
+      }
+      return reply.code(500).send({ error: "Internal error" });
     }
 
     try {
@@ -112,24 +118,27 @@ export function registerSessionRoutes(
       // Emit session event at stream start
       reply.raw.write(`data: ${JSON.stringify({ type: "session", session_id: id })}\n\n`);
 
-      const stream = sm.sendMessage(id, body.message);
-      for await (const msg of stream) {
+      // Write the first message we already consumed, then drain remaining
+      let result = firstResult;
+      while (!result.done) {
         if (clientDisconnected) break;
-        reply.raw.write(`data: ${JSON.stringify(msg)}\n\n`);
+        reply.raw.write(`data: ${JSON.stringify(result.value)}\n\n`);
+        result = await it.next();
       }
+
+      // Ensure iterator cleanup on all exit paths (normal completion, client disconnect break)
+      // This triggers sendMessage's finally block which marks the session idle.
+      await it.return?.();
 
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();
     } catch (err) {
-      if (err instanceof SessionNotFoundError || err instanceof SessionBusyError) {
-        if (!reply.raw.headersSent) {
-          return reply.code(toHttpStatus(err)).send({ error: toSafeMessage(err) });
-        }
-      }
+      // Ensure iterator cleanup so sendMessage finally block runs (marks session idle)
+      await it.return?.();
       if (!reply.raw.headersSent) {
         return reply.code(500).send({ error: "Internal error" });
       }
-      // If headers already sent (streaming), send interrupt event and close
+      // If headers already sent (streaming), send error event and close
       reply.raw.write(`data: ${JSON.stringify({ type: "error", error: toSafeMessage(err) })}\n\n`);
       reply.raw.write("data: [DONE]\n\n");
       reply.raw.end();

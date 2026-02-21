@@ -166,35 +166,29 @@ export const SessionCreateInput = z.object({
 });
 export type SessionCreateInput = z.infer<typeof SessionCreateInput>;
 
-export const SessionMessageInput = z.object({
+/** Shared base for session operations that identify a session within a mecha */
+export const SessionRef = z.object({
   id:        z.string().min(1),
   sessionId: z.string().min(1),
-  message:   z.string().min(1),
+});
+export type SessionRef = z.infer<typeof SessionRef>;
+
+export const SessionGetInput = SessionRef;
+export type SessionGetInput = z.infer<typeof SessionGetInput>;
+
+export const SessionDeleteInput = SessionRef;
+export type SessionDeleteInput = z.infer<typeof SessionDeleteInput>;
+
+export const SessionInterruptInput = SessionRef;
+export type SessionInterruptInput = z.infer<typeof SessionInterruptInput>;
+
+export const SessionMessageInput = SessionRef.extend({
+  message: z.string().min(1),
 });
 export type SessionMessageInput = z.infer<typeof SessionMessageInput>;
 
-export const SessionGetInput = z.object({
-  id:        z.string().min(1),
-  sessionId: z.string().min(1),
-});
-export type SessionGetInput = z.infer<typeof SessionGetInput>;
-
-export const SessionDeleteInput = z.object({
-  id:        z.string().min(1),
-  sessionId: z.string().min(1),
-});
-export type SessionDeleteInput = z.infer<typeof SessionDeleteInput>;
-
-export const SessionInterruptInput = z.object({
-  id:        z.string().min(1),
-  sessionId: z.string().min(1),
-});
-export type SessionInterruptInput = z.infer<typeof SessionInterruptInput>;
-
-export const SessionConfigUpdateInput = z.object({
-  id:        z.string().min(1),
-  sessionId: z.string().min(1),
-  config:    SessionConfig,
+export const SessionConfigUpdateInput = SessionRef.extend({
+  config: SessionConfig,
 });
 export type SessionConfigUpdateInput = z.infer<typeof SessionConfigUpdateInput>;
 
