@@ -9,6 +9,10 @@
       "dependsOn": ["^build"],
       "outputs": [".next/**"]
     },
+    "@mecha/website#build": {
+      "dependsOn": [],
+      "outputs": ["docs/.vitepress/dist/**"]
+    },
     "test": {
       "dependsOn": ["build"],
       "outputs": []
