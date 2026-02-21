@@ -29,9 +29,6 @@ importers:
       '@mecha/core':
         specifier: workspace:*
         version: link:../core
-      '@mecha/dashboard':
-        specifier: workspace:*
-        version: link:../dashboard
       '@mecha/docker':
         specifier: workspace:*
         version: link:../docker

@@ -137,6 +137,37 @@ describe("mecha logs", () => {
     onSpy.mockRestore();
   });
 
+  it("SIGINT handler destroys stream and exits", async () => {
+    const stream = new PassThrough();
+    mockMechaLogs.mockResolvedValue(stream);
+    vi.spyOn(process.stdout, "write").mockImplementation(() => true);
+    const onSpy = vi.spyOn(process, "on");
+    const exitSpy = vi.spyOn(process, "exit").mockImplementation(() => {
+      throw new Error("process.exit");
+    });
+    const destroySpy = vi.spyOn(stream, "destroy");
+
+    const program = new Command();
+    registerLogsCommand(program, deps);
+
+    setTimeout(() => stream.end(), 10);
+
+    await program.parseAsync(["logs", "-f", "mx-test-abc123"], { from: "user" });
+    await new Promise((r) => setTimeout(r, 20));
+
+    // Find the SIGINT handler and invoke it
+    const sigintCall = onSpy.mock.calls.find((c) => c[0] === "SIGINT");
+    expect(sigintCall).toBeDefined();
+    const handler = sigintCall![1] as () => void;
+
+    expect(() => handler()).toThrow("process.exit");
+    expect(destroySpy).toHaveBeenCalled();
+    expect(exitSpy).toHaveBeenCalledWith(0);
+
+    onSpy.mockRestore();
+    exitSpy.mockRestore();
+  });
+
   it("reports errors when mechaLogs fails", async () => {
     mockMechaLogs.mockRejectedValueOnce(new Error("not found"));
 

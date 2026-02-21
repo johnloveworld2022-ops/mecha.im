@@ -5,6 +5,7 @@ import Link from "next/link";
 
 interface Mecha {
   id: string;
+  name: string;
   state: string;
   path: string;
   ports: Array<{ PublicPort?: number }>;

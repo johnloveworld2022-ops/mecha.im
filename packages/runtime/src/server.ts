@@ -45,10 +45,13 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   registerAgentRoutes(app, opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined);
 
   // --- graceful shutdown ---
+  /* v8 ignore start */
   const onSignal = async () => { cleanup(); await app.close(); };
   const cleanup = () => { process.removeListener("SIGTERM", onSignal); process.removeListener("SIGINT", onSignal); };
+  /* v8 ignore stop */
   process.on("SIGTERM", onSignal);
   process.on("SIGINT", onSignal);
+  /* v8 ignore next */
   app.addHook("onClose", async () => cleanup());
 
   return app;

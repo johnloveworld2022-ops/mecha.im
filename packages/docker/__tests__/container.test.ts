@@ -105,6 +105,37 @@ describe("createContainer", () => {
     expect(callArgs.HostConfig.PortBindings["3000/tcp"][0].HostPort).toBe("8080");
   });
 
+  it("includes Cmd when cmd option is provided", async () => {
+    (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
+
+    await createContainer(client, {
+      containerName: "mecha-mx-test-abc123",
+      image: "mecha-runtime:latest",
+      mechaId: "mx-test-abc123" as MechaId,
+      projectPath: "/home/user/project",
+      volumeName: "mecha-state-mx-test-abc123",
+      cmd: ["node", "server.js"],
+    });
+
+    const callArgs = (client.docker.createContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.Cmd).toEqual(["node", "server.js"]);
+  });
+
+  it("omits Cmd when cmd option is not provided", async () => {
+    (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
+
+    await createContainer(client, {
+      containerName: "mecha-mx-test-abc123",
+      image: "mecha-runtime:latest",
+      mechaId: "mx-test-abc123" as MechaId,
+      projectPath: "/home/user/project",
+      volumeName: "mecha-state-mx-test-abc123",
+    });
+
+    const callArgs = (client.docker.createContainer as ReturnType<typeof vi.fn>).mock.calls[0][0];
+    expect(callArgs.Cmd).toBeUndefined();
+  });
+
   it("includes custom env vars", async () => {
     (client.docker.createContainer as ReturnType<typeof vi.fn>).mockResolvedValue({ id: "abc" });
 

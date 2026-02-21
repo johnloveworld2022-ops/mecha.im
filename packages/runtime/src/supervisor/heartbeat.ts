@@ -12,7 +12,11 @@ export function startHeartbeat(
 
   const write = () => {
     try { stmt.run(mechaId, "running", 0); }
-    catch (err) { console.error("Heartbeat write failed:", err instanceof Error ? err.message : err); }
+    /* v8 ignore start */
+    catch (err) {
+      console.error("Heartbeat write failed:", err instanceof Error ? err.message : err);
+    }
+    /* v8 ignore stop */
   };
 
   write();

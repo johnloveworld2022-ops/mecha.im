@@ -70,4 +70,91 @@ describe("Fastify server", () => {
       // Expected - server is closed
     }
   });
+
+  it("rejects requests without auth token when auth is enabled", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, authToken: "test-secret-token" });
+    const res = await app.inject({ method: "GET", url: "/info" });
+
+    expect(res.statusCode).toBe(401);
+    const body = JSON.parse(res.body);
+    expect(body.error).toBe("Unauthorized");
+  });
+
+  it("allows requests with valid auth token when auth is enabled", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, authToken: "test-secret-token" });
+    const res = await app.inject({
+      method: "GET",
+      url: "/info",
+      headers: { authorization: "Bearer test-secret-token" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.id).toBe(TEST_ID);
+  });
+
+  it("allows /healthz without auth even when auth is enabled", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, authToken: "test-secret-token" });
+    const res = await app.inject({ method: "GET", url: "/healthz" });
+
+    expect(res.statusCode).toBe(200);
+  });
+
+  it("auto-generates token and logs it on ready when authToken is omitted", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, logger: true });
+    await app.ready();
+
+    // Verify auth is active: unauthenticated request should fail
+    const res = await app.inject({ method: "GET", url: "/info" });
+    expect(res.statusCode).toBe(401);
+  });
+
+  it("registers MCP routes when skipMcp is not set", async () => {
+    app = createServer({ mechaId: TEST_ID, skipAuth: true });
+
+    // MCP route should exist - POST /mcp should not return 404
+    const res = await app.inject({ method: "POST", url: "/mcp", payload: {} });
+    // It may return an error from MCP processing, but NOT 404
+    expect(res.statusCode).not.toBe(404);
+  });
+
+  it("registers agent routes with agent options", async () => {
+    app = createServer({
+      mechaId: TEST_ID,
+      skipMcp: true,
+      skipAuth: true,
+      agent: { workingDirectory: "/tmp", permissionMode: "full-auto" },
+    });
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/chat",
+      payload: { message: "hello" },
+    });
+
+    // With agent configured, it should attempt to use the SDK (not return 503)
+    // It will fail because the SDK isn't available in test, but it won't be 503
+    expect(res.statusCode).not.toBe(503);
+  });
+
+  it("uses default version when version is omitted", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
+    const res = await app.inject({ method: "GET", url: "/info" });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.version).toBe("0.1.0");
+  });
+
+  it("onClose hook cleans up signal listeners", async () => {
+    app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
+    await app.ready();
+
+    // Count SIGTERM listeners before and after close
+    const beforeCount = process.listenerCount("SIGTERM");
+    await app.close();
+    const afterCount = process.listenerCount("SIGTERM");
+
+    // Should have removed its listener
+    expect(afterCount).toBeLessThan(beforeCount);
+  });
 });

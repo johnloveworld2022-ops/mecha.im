@@ -44,6 +44,25 @@ describe("Heartbeat", () => {
     expect(rows).toHaveLength(4); // 1 initial + 3 ticks
   });
 
+  it("catches and logs error when stmt.run throws", () => {
+    const consoleSpy = vi.spyOn(console, "error").mockImplementation(() => {});
+
+    // Start heartbeat normally to get the first write
+    stop = startHeartbeat(db, TEST_ID, 5000);
+
+    // Now drop the table to cause future writes to fail
+    db.exec("DROP TABLE heartbeats");
+
+    // Advance timer to trigger a write that will fail
+    vi.advanceTimersByTime(5000);
+
+    expect(consoleSpy).toHaveBeenCalledWith(
+      "Heartbeat write failed:",
+      expect.stringContaining("heartbeats"),
+    );
+    consoleSpy.mockRestore();
+  });
+
   it("stops writing heartbeats after stopHeartbeat is called", () => {
     stop = startHeartbeat(db, TEST_ID, 1000);
 

@@ -233,6 +233,26 @@ describe("mechaLs", () => {
     expect(result[0].port).toBe(7700);
     expect(result[0].created).toBe(1700000000);
   });
+
+  it("handles containers with missing labels, names, and ports", async () => {
+    mockListMechaContainers.mockResolvedValue([
+      {
+        Labels: {},
+        Names: [],
+        State: "exited",
+        Status: "Exited (0)",
+        Ports: [],
+        Created: 1700000000,
+      },
+    ]);
+
+    const result = await mechaLs(client);
+    expect(result).toHaveLength(1);
+    expect(result[0].id).toBe("");
+    expect(result[0].name).toBe("");
+    expect(result[0].path).toBe("");
+    expect(result[0].port).toBeUndefined();
+  });
 });
 
 describe("mechaStatus", () => {
@@ -249,6 +269,22 @@ describe("mechaStatus", () => {
     expect(result.running).toBe(true);
     expect(result.port).toBe(7700);
     expect(result.image).toBe("mecha-runtime:latest");
+  });
+
+  it("handles missing state, config, and port data", async () => {
+    mockInspectContainer.mockResolvedValue({
+      Name: "/mecha-mx-foo",
+      State: undefined,
+      Config: undefined,
+      NetworkSettings: undefined,
+    });
+
+    const result = await mechaStatus(client, "mx-foo");
+    expect(result.state).toBe("unknown");
+    expect(result.running).toBe(false);
+    expect(result.port).toBeUndefined();
+    expect(result.path).toBe("");
+    expect(result.image).toBe("");
   });
 });
 
@@ -328,6 +364,81 @@ describe("mechaConfigure", () => {
     expect(opts.env).toContain("ANTHROPIC_API_KEY=sk-ant-123");
   });
 
+  it("tolerates 409 from stopTolerant (already stopped)", async () => {
+    const err409 = Object.assign(new Error("already stopped"), { statusCode: 409 });
+    mockStopContainer.mockRejectedValueOnce(err409);
+
+    await mechaConfigure(client, { id: "mx-foo", otp: "newval" });
+
+    // Should proceed to recreate despite 409
+    expect(mockRemoveContainer).toHaveBeenCalledTimes(1);
+    expect(mockCreateContainer).toHaveBeenCalledTimes(1);
+    expect(mockStartContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it("rethrows non-409 error from stopTolerant", async () => {
+    const serverError = new Error("server error");
+    mockStopContainer.mockRejectedValueOnce(serverError);
+
+    await expect(mechaConfigure(client, { id: "mx-foo", otp: "newval" })).rejects.toThrow("server error");
+  });
+
+  it("still throws original error when rollback also fails (recreateWithRollback outer catch)", async () => {
+    // removeContainer succeeds, createContainer fails (not ContainerStartError)
+    // Then in outer catch: rollback createContainer succeeds but startContainer fails
+    mockRemoveContainer
+      .mockResolvedValueOnce(undefined);  // initial remove succeeds
+    mockCreateContainer
+      .mockRejectedValueOnce(new Error("image not found"))  // new container create fails
+      .mockResolvedValueOnce({ id: "rollback" });            // rollback create succeeds
+    mockStartContainer
+      .mockRejectedValueOnce(new Error("rollback start also failed")); // rollback start fails
+
+    await expect(mechaConfigure(client, { id: "mx-foo", otp: "newval" })).rejects.toThrow("image not found");
+
+    // Verify rollback was attempted (createContainer called twice)
+    expect(mockCreateContainer).toHaveBeenCalledTimes(2);
+    expect(mockStartContainer).toHaveBeenCalledTimes(1);
+  });
+
+  it("handles missing Env and Mounts in inspect data", async () => {
+    mockInspectContainer.mockResolvedValue({
+      Config: {
+        Image: "mecha-runtime:latest",
+        Env: undefined,
+        Labels: {},
+      },
+      NetworkSettings: {},
+      Mounts: undefined,
+    });
+
+    await mechaConfigure(client, { id: "mx-foo", otp: "newval" });
+
+    const opts = mockCreateContainer.mock.calls[0][1];
+    expect(opts.env).toContain("MECHA_OTP=newval");
+    expect(opts.volumeName).toBe("");
+    expect(opts.projectPath).toBe("");
+  });
+
+  it("handles env entry without equals sign", async () => {
+    mockInspectContainer.mockResolvedValue({
+      Config: {
+        Image: "mecha-runtime:latest",
+        Env: ["MECHA_ID=mx-foo", "NOEQUALS"],
+        Labels: { "mecha.path": "/tmp" },
+      },
+      NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
+      Mounts: [{ Destination: "/var/lib/mecha", Name: "vol" }],
+    });
+
+    await mechaConfigure(client, { id: "mx-foo", otp: "newval" });
+
+    const opts = mockCreateContainer.mock.calls[0][1];
+    // "NOEQUALS" has indexOf("=") === -1 which is not > 0, so should be skipped
+    const envStr = (opts.env as string[]).join("|");
+    expect(envStr).not.toContain("NOEQUALS");
+  });
+
   it("clears env var when set to empty string", async () => {
     mockInspectContainer.mockResolvedValue({
       Config: {
@@ -364,6 +475,16 @@ describe("mechaDoctor", () => {
     const result = await mechaDoctor(client);
     expect(result.dockerAvailable).toBe(false);
     expect(result.issues).toContain("Docker is not available. Is Docker/Colima running?");
+  });
+
+  it("reports network check failure when listNetworks throws", async () => {
+    const listNetworks = vi.fn().mockRejectedValue(new Error("network error"));
+    const doctorClient = { docker: { listNetworks } } as unknown as DockerClient;
+
+    const result = await mechaDoctor(doctorClient);
+    expect(result.dockerAvailable).toBe(true);
+    expect(result.networkExists).toBe(false);
+    expect(result.issues).toContain("Failed to check network status.");
   });
 
   it("reports missing network", async () => {

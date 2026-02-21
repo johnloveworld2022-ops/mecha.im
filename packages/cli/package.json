@@ -16,7 +16,6 @@
   "dependencies": {
     "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
-    "@mecha/dashboard": "workspace:*",
     "@mecha/docker": "workspace:*",
     "@mecha/service": "workspace:*",
     "commander": "^13.1.0"

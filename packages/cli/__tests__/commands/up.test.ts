@@ -93,6 +93,19 @@ describe("mecha up", () => {
     expect(input.otp).toBe("env-otp");
   });
 
+  it("falls back to env var for ANTHROPIC_API_KEY", async () => {
+    process.env["ANTHROPIC_API_KEY"] = "env-api-key";
+
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
+    const program = new Command();
+    registerUpCommand(program, deps);
+
+    await program.parseAsync(["up", tmpdir()], { from: "user" });
+
+    const [, input] = mockMechaUp.mock.calls[0];
+    expect(input.anthropicApiKey).toBe("env-api-key");
+  });
+
   it("falls back to .env file values", async () => {
     mockLoadDotEnvFiles.mockReturnValue({
       CLAUDE_CODE_OAUTH_TOKEN: "dotenv-token",
@@ -108,6 +121,22 @@ describe("mecha up", () => {
     const [, input] = mockMechaUp.mock.calls[0];
     expect(input.claudeToken).toBe("dotenv-token");
     expect(input.otp).toBe("dotenv-otp");
+  });
+
+  it("falls back to .env file for ANTHROPIC_API_KEY", async () => {
+    delete process.env["ANTHROPIC_API_KEY"];
+    mockLoadDotEnvFiles.mockReturnValue({
+      ANTHROPIC_API_KEY: "dotenv-api-key",
+    });
+
+    const deps: CommandDeps = { dockerClient: { docker: {} } as any, formatter };
+    const program = new Command();
+    registerUpCommand(program, deps);
+
+    await program.parseAsync(["up", tmpdir()], { from: "user" });
+
+    const [, input] = mockMechaUp.mock.calls[0];
+    expect(input.anthropicApiKey).toBe("dotenv-api-key");
   });
 
   it("shows full token with --show-token", async () => {

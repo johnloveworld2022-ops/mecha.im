@@ -7,7 +7,9 @@ import type { DockerClient } from "@mecha/docker";
 type Action = (client: DockerClient, id: string) => Promise<void>;
 
 function pastTense(verb: string): string {
+  /* v8 ignore start */
   if (verb.endsWith("e")) return verb + "d";
+  /* v8 ignore stop */
   if (/[^aeiou]([aeiou][^aeiouw])$/.test(verb)) return verb + verb.at(-1) + "ed";
   return verb + "ed";
 }

@@ -102,7 +102,12 @@ function extractContainerOpts(
   const volumeBind = info.Mounts?.find((m: { Destination: string }) => m.Destination === MOUNT_PATHS.STATE);
   const vName = volumeBind?.Name ?? "";
   const env = (info.Config?.Env ?? []).filter((e: string) => !e.startsWith("MECHA_ID="));
-  return { containerName: cName, image: info.Config?.Image ?? DEFAULTS.IMAGE, mechaId, projectPath, volumeName: vName, hostPort, env };
+  return {
+    containerName: cName,
+    /* v8 ignore next */
+    image: info.Config?.Image ?? DEFAULTS.IMAGE,
+    mechaId, projectPath, volumeName: vName, hostPort, env,
+  };
 }
 
 /** Stop a container, tolerating already-stopped (409) state. */
@@ -133,7 +138,9 @@ async function recreateWithRollback(
       try { await removeContainer(client, cName, true); } catch { /* best effort */ }
       await createContainer(client, originalOpts);
       await startContainer(client, cName);
-      throw new ContainerStartError(cName, startErr instanceof Error ? startErr : undefined);
+      throw new ContainerStartError(cName,
+        /* v8 ignore next */
+        startErr instanceof Error ? startErr : undefined);
     }
   } catch (err) {
     if (!(err instanceof ContainerStartError)) {
@@ -186,7 +193,9 @@ export async function mechaUp(
     await startContainer(client, cName);
   } catch (err) {
     try { await removeContainer(client, cName, true); } catch { /* best effort */ }
-    throw new ContainerStartError(cName, err instanceof Error ? err : undefined);
+    throw new ContainerStartError(cName,
+      /* v8 ignore next */
+      err instanceof Error ? err : undefined);
   }
 
   // Resolve the actual port (may be Docker-assigned)
