@@ -22,7 +22,7 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
   const [copied, setCopied] = useState<string | null>(null);
 
   useEffect(() => {
-    fetch(`/api/mechas/${mechaId}/mcp`)
+    fetch(`/api/mechas/${mechaId}/mcp?reveal=true`)
       .then(async (res) => {
         if (!res.ok) {
           const body = await res.json().catch(() => ({})) as { error?: string };
@@ -35,19 +35,26 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
       .finally(() => setLoading(false));
   }, [mechaId]);
 
+  const [copyError, setCopyError] = useState(false);
+
   const copyToClipboard = useCallback(async (text: string, label: string) => {
     try {
       await navigator.clipboard.writeText(text);
       setCopied(label);
+      setCopyError(false);
       setTimeout(() => setCopied(null), 2000);
     } catch {
-      // fallback
+      setCopyError(true);
+      setTimeout(() => setCopyError(false), 3000);
     }
   }, []);
 
   if (loading) return <div className="text-sm text-muted-foreground">Loading MCP info...</div>;
   if (error) return <div className="text-sm text-destructive">{error}</div>;
   if (!info) return null;
+
+  /* v8 ignore next */
+  const copyLabel = (label: string) => copyError ? "Copy failed" : (copied === label ? "Copied" : "Copy");
 
   const configJson = JSON.stringify(
     {
@@ -80,7 +87,7 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
           className="h-7 text-xs"
           onClick={() => copyToClipboard(info.endpoint, "endpoint")}
         >
-          {copied === "endpoint" ? "Copied" : "Copy"}
+          {copyLabel("endpoint")}
         </Button>
       </div>
 
@@ -105,7 +112,7 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
             className="h-7 text-xs"
             onClick={() => copyToClipboard(info.token!, "token")}
           >
-            {copied === "token" ? "Copied" : "Copy"}
+            {copyLabel("token")}
           </Button>
         )}
       </div>
@@ -131,7 +138,7 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
               className="absolute top-2 right-2 h-6 text-xs"
               onClick={() => copyToClipboard(configJson, "config")}
             >
-              {copied === "config" ? "Copied" : "Copy"}
+              {copyLabel("config")}
             </Button>
           </div>
         )}

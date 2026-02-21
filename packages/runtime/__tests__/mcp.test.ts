@@ -150,7 +150,8 @@ describe("MCP tools - mecha_chat", () => {
     const [url, init] = mockFetch.mock.calls[0]!;
     expect(url).toBe("http://127.0.0.1:3000/api/chat");
     expect((init as RequestInit).method).toBe("POST");
-    expect((init as RequestInit).headers).toHaveProperty("Authorization", `Bearer ${TEST_TOKEN}`);
+    const headers = (init as RequestInit).headers as Headers;
+    expect(headers.get("Authorization")).toBe(`Bearer ${TEST_TOKEN}`);
   });
 
   it("parses SSE frames from agent response", async () => {

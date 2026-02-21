@@ -196,6 +196,20 @@ describe("getContainerPort", () => {
     const port = await getContainerPort(client, "mecha-mx-test");
     expect(port).toBeUndefined();
   });
+
+  it("returns undefined when HostPort is non-numeric", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: {
+          Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "invalid" }] },
+        },
+      }),
+    });
+
+    const port = await getContainerPort(client, "mecha-mx-test");
+    expect(port).toBeUndefined();
+  });
 });
 
 describe("getContainerPortAndEnv", () => {
@@ -227,6 +241,19 @@ describe("getContainerPortAndEnv", () => {
     const result = await getContainerPortAndEnv(client, "mecha-mx-test");
     expect(result.port).toBeUndefined();
     expect(result.env).toEqual(["FOO=bar"]);
+  });
+
+  it("returns undefined port when HostPort is non-numeric", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "invalid" }] } },
+        Config: { Env: [] },
+      }),
+    });
+
+    const result = await getContainerPortAndEnv(client, "mecha-mx-test");
+    expect(result.port).toBeUndefined();
   });
 
   it("returns empty env array when Config.Env is missing", async () => {

@@ -1,5 +1,5 @@
 import { inspectContainer } from "@mecha/docker";
-import { containerName, ContainerNotFoundError, DEFAULTS } from "@mecha/core";
+import { containerName, ContainerNotFoundError, DEFAULTS, LABELS } from "@mecha/core";
 import type { MechaId } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { requireAuth } from "@/lib/require-auth";
@@ -26,7 +26,7 @@ export default async function MechaDetailPage({
   const client = getDockerClient();
   const name = containerName(id as MechaId);
 
-  let info;
+  let info: Awaited<ReturnType<typeof inspectContainer>>;
   try {
     info = await inspectContainer(client, name);
   } catch (err) {
@@ -76,7 +76,7 @@ export default async function MechaDetailPage({
         <InfoCard label="Image" value={info.Config?.Image ?? "\u2014"} />
         <InfoCard label="Port" value={hostPort ? `:${hostPort}` : "\u2014"} />
         <InfoCard label="Created" value={new Date(info.Created).toLocaleString()} />
-        <InfoCard label="Path" value={info.Config?.Labels?.[`mecha.path`] ?? "\u2014"} />
+        <InfoCard label="Path" value={info.Config?.Labels?.[LABELS.MECHA_PATH] ?? "\u2014"} />
         <InfoCard
           label="PID"
           value={state?.Pid ? String(state.Pid) : "\u2014"}

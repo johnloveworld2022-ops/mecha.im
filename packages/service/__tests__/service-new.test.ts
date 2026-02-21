@@ -109,8 +109,8 @@ describe("mechaToken", () => {
     await expect(mechaToken(client, "mx-abc")).rejects.toThrow(TokenNotFoundError);
   });
 
-  it("throws TokenNotFoundError when env is empty array", async () => {
-    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: [] });
+  it("throws TokenNotFoundError when env has unrelated vars only", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: ["OTHER=val"] });
     await expect(mechaToken(client, "mx-abc")).rejects.toThrow(TokenNotFoundError);
   });
 });
@@ -227,11 +227,11 @@ describe("mechaUpdate", () => {
   const fakeInspect = {
     Config: {
       Image: "mecha-runtime:old",
-      Labels: { "im.mecha.path": "/home/user/project" },
+      Labels: { "mecha.path": "/home/user/project" },
       Env: ["MECHA_AUTH_TOKEN=token123"],
     },
-    NetworkSettings: { Ports: { "7860/tcp": [{ HostPort: "7700" }] } },
-    Mounts: [{ Destination: "/home/user/.mecha", Name: "mecha-vol-abc" }],
+    NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "7700" }] } },
+    Mounts: [{ Destination: "/var/lib/mecha", Name: "mecha-vol-abc" }],
   };
 
   it("pulls image and recreates container", async () => {

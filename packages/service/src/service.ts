@@ -91,6 +91,12 @@ function validatePermissionMode(mode: string | undefined): void {
 
 // --- Helpers ---
 
+/** Extract a value from Docker env array (KEY=value format). */
+function readEnvValue(env: string[], key: string): string | undefined {
+  const entry = env.find((e) => e.startsWith(`${key}=`));
+  return entry ? entry.split("=").slice(1).join("=") : undefined;
+}
+
 /** Update or delete env vars in a map based on input fields. */
 type EnvFieldMap = Record<string, { envKey: string; value: string | undefined }>;
 function applyEnvUpdates(envMap: Map<string, string>, fields: EnvFieldMap): void {
@@ -103,16 +109,18 @@ function applyEnvUpdates(envMap: Map<string, string>, fields: EnvFieldMap): void
 
 /** Extract container options from inspect info for rollback purposes. */
 function extractContainerOpts(
-  info: Record<string, any>,
+  info: Awaited<ReturnType<typeof inspectContainer>>,
   cName: string,
   mechaId: MechaId,
 ): { containerName: string; image: string; mechaId: MechaId; projectPath: string; volumeName: string; hostPort: number | undefined; env: string[] } {
   const projectPath = info.Config?.Labels?.[LABELS.MECHA_PATH] ?? "";
   const portBindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
   const hostPort = Number(portBindings?.[0]?.HostPort ?? 0) || undefined;
-  const volumeBind = info.Mounts?.find((m: { Destination: string }) => m.Destination === MOUNT_PATHS.STATE);
+  const volumeBind = (info.Mounts as Array<{ Destination: string; Name: string }> | undefined)?.find(
+    (m) => m.Destination === MOUNT_PATHS.STATE,
+  );
   const vName = volumeBind?.Name ?? "";
-  const env = (info.Config?.Env ?? []).filter((e: string) => !e.startsWith("MECHA_ID="));
+  const env = ((info.Config?.Env ?? []) as string[]).filter((e) => !e.startsWith("MECHA_ID="));
   return {
     containerName: cName,
     /* v8 ignore next */
@@ -241,16 +249,7 @@ export async function mechaStop(client: DockerClient, id: string): Promise<void>
 // --- 5. mechaRestart ---
 export async function mechaRestart(client: DockerClient, id: string): Promise<void> {
   const cName = containerName(id as MechaId);
-  try {
-    await stopContainer(client, cName);
-  } catch (err) {
-    // Tolerate already-stopped containers (409 Conflict)
-    if (err instanceof Error && "statusCode" in err && (err as { statusCode: number }).statusCode === 409) {
-      // already stopped, continue
-    } else {
-      throw err;
-    }
-  }
+  await stopTolerant(client, cName);
   await startContainer(client, cName);
 }
 
@@ -400,8 +399,7 @@ export async function resolveMcpEndpoint(client: DockerClient, id: string): Prom
   const cName = containerName(id as MechaId);
   const { port, env } = await getContainerPortAndEnv(client, cName);
   if (!port) throw new NoPortBindingError(id);
-  const tokenEntry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
-  const token = tokenEntry ? tokenEntry.split("=").slice(1).join("=") : undefined;
+  const token = readEnvValue(env, "MECHA_AUTH_TOKEN");
   return { endpoint: `http://127.0.0.1:${port}/mcp`, token };
 }
 
@@ -411,9 +409,9 @@ export async function mechaToken(
   id: string,
 ): Promise<MechaTokenResultType> {
   const { env } = await getContainerPortAndEnv(client, containerName(id as MechaId));
-  const entry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
-  if (!entry) throw new TokenNotFoundError(id);
-  return { id, token: entry.split("=").slice(1).join("=") };
+  const token = readEnvValue(env, "MECHA_AUTH_TOKEN");
+  if (!token) throw new TokenNotFoundError(id);
+  return { id, token };
 }
 
 // --- 16. mechaInspect ---
@@ -421,7 +419,8 @@ export async function mechaInspect(
   client: DockerClient,
   id: string,
 ): Promise<Record<string, unknown>> {
-  return inspectContainer(client, containerName(id as MechaId)) as unknown as Record<string, unknown>;
+  const info = await inspectContainer(client, containerName(id as MechaId));
+  return JSON.parse(JSON.stringify(info)) as Record<string, unknown>;
 }
 
 // --- 17. mechaEnv ---
@@ -514,9 +513,8 @@ async function getRuntimeAccess(client: DockerClient, mechaId: string): Promise<
   const cName = containerName(mechaId as MechaId);
   const { port, env } = await getContainerPortAndEnv(client, cName);
   if (!port) throw new NoPortBindingError(mechaId);
-  const tokenEntry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
-  if (!tokenEntry) throw new TokenNotFoundError(mechaId);
-  const token = tokenEntry.split("=").slice(1).join("=");
+  const token = readEnvValue(env, "MECHA_AUTH_TOKEN");
+  if (!token) throw new TokenNotFoundError(mechaId);
   return { url: `http://127.0.0.1:${port}`, token };
 }
 

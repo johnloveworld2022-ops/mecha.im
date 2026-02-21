@@ -63,11 +63,21 @@ export function registerMcpRoutes(
     const now = Date.now();
     for (const [sid, entry] of sessions) {
       if (now - entry.lastAccess > SESSION_TTL_MS) {
+        entry.transport.close?.();
         sessions.delete(sid);
       }
     }
   }, 60_000);
   cleanupTimer.unref();
+
+  // Clean up on server close
+  app.addHook("onClose", async () => {
+    clearInterval(cleanupTimer);
+    for (const [, entry] of sessions) {
+      entry.transport.close?.();
+    }
+    sessions.clear();
+  });
 
   const getSessionId = (req: { headers: Record<string, string | string[] | undefined> }) =>
     (req.headers["mcp-session-id"] as string) || undefined;
@@ -137,6 +147,14 @@ export function registerMcpRoutes(
   });
 }
 
+/** Build headers ensuring auth cannot be overridden by caller */
+function buildHeaders(authToken: string, extra?: Record<string, string>): Headers {
+  const headers = new Headers(extra);
+  headers.set("Content-Type", "application/json");
+  headers.set("Authorization", `Bearer ${authToken}`);
+  return headers;
+}
+
 /** JSON endpoints — 30s timeout */
 async function agentFetch(
   path: string,
@@ -145,11 +163,7 @@ async function agentFetch(
 ): Promise<Response> {
   return fetch(`http://127.0.0.1:3000${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-      ...(init?.headers as Record<string, string> | undefined),
-    },
+    headers: buildHeaders(authToken, init?.headers as Record<string, string> | undefined),
     signal: init?.signal ?? AbortSignal.timeout(30_000),
   });
 }
@@ -162,11 +176,7 @@ async function agentStream(
 ): Promise<string> {
   const res = await fetch(`http://127.0.0.1:3000${path}`, {
     ...init,
-    headers: {
-      "Content-Type": "application/json",
-      Authorization: `Bearer ${authToken}`,
-      ...(init?.headers as Record<string, string> | undefined),
-    },
+    headers: buildHeaders(authToken, init?.headers as Record<string, string> | undefined),
     signal: init?.signal ?? AbortSignal.timeout(300_000),
   });
   if (!res.ok) throw new Error(`Agent error: ${res.status} ${res.statusText}`);

@@ -63,7 +63,9 @@ export async function getContainerPort(client: DockerClient, name: string): Prom
   const info = await inspectContainer(client, name);
   const bindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
   const portStr = bindings?.[0]?.HostPort;
-  return portStr ? parseInt(portStr, 10) : undefined;
+  if (!portStr) return undefined;
+  const parsed = parseInt(portStr, 10);
+  return Number.isFinite(parsed) ? parsed : undefined;
 }
 
 /** Get host port and env vars from a single inspect call */
@@ -74,8 +76,9 @@ export async function getContainerPortAndEnv(
   const info = await inspectContainer(client, name);
   const bindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
   const portStr = bindings?.[0]?.HostPort;
+  const parsed = portStr ? parseInt(portStr, 10) : undefined;
   return {
-    port: portStr ? parseInt(portStr, 10) : undefined,
+    port: parsed !== undefined && Number.isFinite(parsed) ? parsed : undefined,
     env: (info.Config?.Env ?? []) as string[],
   };
 }
