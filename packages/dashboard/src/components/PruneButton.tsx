@@ -1,6 +1,15 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { Button } from "@/components/ui/button";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface PruneResult {
   removedContainers: string[];
@@ -42,110 +51,59 @@ export function PruneButton({ prunableCount, onPruned }: { prunableCount: number
 
   return (
     <>
-      <button
+      <Button
+        variant="outline"
+        size="sm"
         onClick={() => {
           setResult(null);
           setError("");
           setConfirming(true);
         }}
         disabled={pruning || prunableCount === 0}
-        style={{
-          padding: "6px 14px",
-          fontSize: "13px",
-          borderRadius: "6px",
-          border: "1px solid var(--warning)",
-          backgroundColor: "transparent",
-          color: "var(--warning)",
-          cursor: pruning || prunableCount === 0 ? "not-allowed" : "pointer",
-          opacity: pruning || prunableCount === 0 ? 0.5 : 1,
-        }}
+        className="border-warning text-warning hover:bg-warning/10"
       >
         {pruning ? "Pruning..." : "Prune"}
-      </button>
+      </Button>
 
       {result && (
-        <span style={{ fontSize: "12px", color: "var(--success)", marginLeft: "8px" }}>
+        <span className="text-xs text-success ml-2">
           Removed {result.removedContainers.length} container(s)
           {result.removedVolumes.length > 0 && `, ${result.removedVolumes.length} volume(s)`}
         </span>
       )}
       {error && (
-        <span style={{ fontSize: "12px", color: "var(--danger)", marginLeft: "8px" }}>{error}</span>
+        <span className="text-xs text-destructive ml-2">{error}</span>
       )}
 
-      {confirming && (
-        <div
-          onClick={() => setConfirming(false)}
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "90%",
-            }}
-          >
-            <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "8px" }}>Prune Mechas</h3>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "12px" }}>
+      <Dialog open={confirming} onOpenChange={setConfirming}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Prune Mechas</DialogTitle>
+            <DialogDescription>
               Remove {prunableCount} stopped/exited container(s)?
-            </p>
-            <label style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "13px",
-              color: "var(--text-muted)",
-              marginBottom: "16px",
-              cursor: "pointer",
-            }}>
-              <input
-                type="checkbox"
-                checked={volumes}
-                onChange={(e) => setVolumes(e.target.checked)}
-              />
-              Also remove state volumes
-            </label>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => setConfirming(false)}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  backgroundColor: "transparent",
-                  color: "var(--text)",
-                  cursor: "pointer",
-                }}
-              >Cancel</button>
-              <button
-                onClick={doPrune}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: "var(--warning)",
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >Prune</button>
-            </div>
-          </div>
-        </div>
-      )}
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={volumes}
+              onChange={(e) => setVolumes(e.target.checked)}
+            />
+            Also remove state volumes
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => setConfirming(false)}>
+              Cancel
+            </Button>
+            <Button
+              onClick={doPrune}
+              className="bg-warning text-white hover:bg-warning/90"
+            >
+              Prune
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </>
   );
 }

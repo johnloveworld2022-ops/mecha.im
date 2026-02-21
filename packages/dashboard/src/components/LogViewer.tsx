@@ -28,39 +28,17 @@ export function LogViewer({ mechaId }: { mechaId: string }) {
   }, [lines]);
 
   return (
-    <div style={{ display: "flex", flexDirection: "column", gap: "8px" }}>
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "8px",
-        fontSize: "13px",
-        color: "var(--text-muted)",
-      }}>
-        <span style={{
-          width: 8,
-          height: 8,
-          borderRadius: "50%",
-          backgroundColor: connected ? "var(--success)" : "var(--danger)",
-        }} />
+    <div className="flex flex-col gap-2">
+      <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+        <span className={`size-2 rounded-full ${connected ? "bg-success" : "bg-destructive"}`} />
         {connected ? "Streaming logs" : "Disconnected"}
       </div>
       <div
         ref={containerRef}
-        style={{
-          height: "400px",
-          overflowY: "auto",
-          backgroundColor: "#000",
-          borderRadius: "8px",
-          padding: "12px",
-          fontFamily: "ui-monospace, 'SF Mono', Menlo, monospace",
-          fontSize: "12px",
-          lineHeight: "1.6",
-          color: "#ccc",
-          border: "1px solid var(--border)",
-        }}
+        className="h-[400px] overflow-y-auto bg-black rounded-lg p-3 font-mono text-xs leading-relaxed text-[#ccc] border border-border"
       >
         {lines.length === 0 ? (
-          <span style={{ color: "var(--text-muted)" }}>Waiting for logs...</span>
+          <span className="text-muted-foreground">Waiting for logs...</span>
         ) : (
           lines.map((line, i) => <div key={i}>{line}</div>)
         )}

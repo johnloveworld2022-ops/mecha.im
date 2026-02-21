@@ -2,6 +2,7 @@
 
 import { useState, type FormEvent } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 export function LoginForm() {
   const [code, setCode] = useState("");
@@ -36,43 +37,22 @@ export function LoginForm() {
     }
   }
 
+  const isDisabled = code.length !== 6 || loading;
+
   return (
-    <div style={{
-      display: "flex",
-      alignItems: "center",
-      justifyContent: "center",
-      minHeight: "100vh",
-    }}>
+    <div className="flex items-center justify-center min-h-screen">
       <form
         onSubmit={handleSubmit}
-        style={{
-          display: "flex",
-          flexDirection: "column",
-          gap: "16px",
-          width: "320px",
-          padding: "32px",
-          borderRadius: "12px",
-          backgroundColor: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-        }}
+        className="flex flex-col gap-4 w-80 p-8 rounded-xl bg-card border border-border"
       >
-        <h1 style={{ fontSize: "20px", fontWeight: 600, textAlign: "center" }}>
+        <h1 className="text-xl font-semibold text-center">
           Mecha Dashboard
         </h1>
-        <p style={{ fontSize: "14px", color: "var(--text-muted)", textAlign: "center" }}>
+        <p className="text-sm text-muted-foreground text-center">
           Enter your 6-digit TOTP code
         </p>
 
-        <label htmlFor="totp-code" className="sr-only" style={{
-          position: "absolute",
-          width: "1px",
-          height: "1px",
-          padding: 0,
-          margin: "-1px",
-          overflow: "hidden",
-          clip: "rect(0,0,0,0)",
-          border: 0,
-        }}>
+        <label htmlFor="totp-code" className="sr-only">
           TOTP code
         </label>
         <input
@@ -86,42 +66,21 @@ export function LoginForm() {
           placeholder="000000"
           aria-label="6-digit TOTP code"
           autoFocus
-          style={{
-            padding: "12px 16px",
-            fontSize: "24px",
-            textAlign: "center",
-            letterSpacing: "0.5em",
-            borderRadius: "8px",
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--bg)",
-            color: "var(--text)",
-            outline: "none",
-          }}
+          className="px-4 py-3 text-2xl text-center tracking-[0.5em] rounded-lg border border-border bg-background text-foreground outline-none"
         />
 
         {error && (
-          <p style={{ color: "var(--danger)", fontSize: "13px", textAlign: "center" }}>
+          <p className="text-destructive text-[13px] text-center">
             {error}
           </p>
         )}
 
-        <button
+        <Button
           type="submit"
-          disabled={code.length !== 6 || loading}
-          style={{
-            padding: "10px",
-            borderRadius: "8px",
-            border: "none",
-            backgroundColor: "var(--accent)",
-            color: "#fff",
-            fontSize: "14px",
-            fontWeight: 500,
-            opacity: code.length !== 6 || loading ? 0.5 : 1,
-            cursor: code.length !== 6 || loading ? "not-allowed" : "pointer",
-          }}
+          disabled={isDisabled}
         >
           {loading ? "Verifying..." : "Login"}
-        </button>
+        </Button>
       </form>
     </div>
   );

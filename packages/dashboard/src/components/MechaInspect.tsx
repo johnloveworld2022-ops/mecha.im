@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 export function MechaInspect({ mechaId }: { mechaId: string }) {
   const [open, setOpen] = useState(false);
@@ -43,75 +44,36 @@ export function MechaInspect({ mechaId }: { mechaId: string }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <button
+      <div className="flex gap-2 items-center">
+        <Button
+          variant="outline"
+          size="xs"
           onClick={() => fetchInspect()}
           disabled={loading}
-          style={{
-            padding: "4px 10px",
-            fontSize: "12px",
-            borderRadius: "4px",
-            border: "1px solid var(--border)",
-            backgroundColor: "transparent",
-            color: "var(--text-muted)",
-            cursor: loading ? "not-allowed" : "pointer",
-            opacity: loading ? 0.5 : 1,
-          }}
         >
           {loading ? "Loading..." : open ? "Hide raw JSON" : "Show raw JSON"}
-        </button>
+        </Button>
         {open && data && (
           <>
-            <button
-              onClick={copyToClipboard}
-              style={{
-                padding: "4px 10px",
-                fontSize: "12px",
-                borderRadius: "4px",
-                border: "1px solid var(--border)",
-                backgroundColor: "transparent",
-                color: "var(--text-muted)",
-                cursor: "pointer",
-              }}
-            >
+            <Button variant="outline" size="xs" onClick={copyToClipboard}>
               {copied ? "Copied!" : "Copy"}
-            </button>
-            <button
+            </Button>
+            <Button
+              variant="outline"
+              size="xs"
               onClick={() => fetchInspect(true)}
               disabled={loading}
-              style={{
-                padding: "4px 10px",
-                fontSize: "12px",
-                borderRadius: "4px",
-                border: "1px solid var(--border)",
-                backgroundColor: "transparent",
-                color: "var(--text-muted)",
-                cursor: loading ? "not-allowed" : "pointer",
-              }}
             >
               Refresh
-            </button>
+            </Button>
           </>
         )}
       </div>
       {error && (
-        <p style={{ fontSize: "13px", color: "var(--danger)", marginTop: "8px" }}>{error}</p>
+        <p className="text-[13px] text-destructive mt-2">{error}</p>
       )}
       {open && data && (
-        <pre style={{
-          marginTop: "8px",
-          padding: "12px",
-          fontSize: "12px",
-          fontFamily: "monospace",
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border)",
-          borderRadius: "6px",
-          overflow: "auto",
-          maxHeight: "500px",
-          whiteSpace: "pre-wrap",
-          wordBreak: "break-all",
-          color: "var(--text-primary)",
-        }}>
+        <pre className="mt-2 p-3 text-xs font-mono bg-background border border-border rounded-md overflow-auto max-h-[500px] whitespace-pre-wrap break-all text-foreground">
           {data}
         </pre>
       )}

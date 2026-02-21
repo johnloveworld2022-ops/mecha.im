@@ -1,6 +1,7 @@
 "use client";
 
 import { useCallback, useState } from "react";
+import { Button } from "@/components/ui/button";
 
 interface ExecResult {
   exitCode: number;
@@ -75,7 +76,7 @@ export function MechaExec({ mechaId }: { mechaId: string }) {
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "8px", marginBottom: "8px" }}>
+      <div className="flex gap-2 mb-2">
         <input
           type="text"
           value={command}
@@ -83,66 +84,35 @@ export function MechaExec({ mechaId }: { mechaId: string }) {
           onKeyDown={handleKeyDown}
           placeholder="Enter command (e.g., ls -la)"
           disabled={running}
-          style={{
-            flex: 1,
-            padding: "6px 10px",
-            fontSize: "13px",
-            fontFamily: "monospace",
-            borderRadius: "4px",
-            border: "1px solid var(--border)",
-            backgroundColor: "var(--bg-primary)",
-            color: "var(--text-primary)",
-            outline: "none",
-          }}
+          className="flex-1 px-2.5 py-1.5 text-[13px] font-mono rounded border border-border bg-background text-foreground outline-none"
         />
-        <button
+        <Button
           onClick={runCommand}
           disabled={running || !command.trim()}
-          style={{
-            padding: "6px 14px",
-            fontSize: "13px",
-            borderRadius: "4px",
-            border: "none",
-            backgroundColor: "var(--accent)",
-            color: "#fff",
-            cursor: running || !command.trim() ? "not-allowed" : "pointer",
-            opacity: running || !command.trim() ? 0.5 : 1,
-          }}
+          size="sm"
         >
           {running ? "Running..." : "Run"}
-        </button>
+        </Button>
       </div>
       {error && (
-        <p style={{ fontSize: "13px", color: "var(--danger)", marginBottom: "8px" }}>{error}</p>
+        <p className="text-[13px] text-destructive mb-2">{error}</p>
       )}
       {results.length > 0 && (
-        <div style={{
-          padding: "12px",
-          backgroundColor: "var(--bg-primary)",
-          border: "1px solid var(--border)",
-          borderRadius: "6px",
-          maxHeight: "400px",
-          overflow: "auto",
-          fontFamily: "monospace",
-          fontSize: "12px",
-        }}>
+        <div className="p-3 bg-background border border-border rounded-md max-h-[400px] overflow-auto font-mono text-xs">
           {results.map((r) => (
-            <div key={r.ts} style={{ marginBottom: "12px" }}>
-              <div style={{ color: "var(--accent)", marginBottom: "4px" }}>
+            <div key={r.ts} className="mb-3">
+              <div className="text-accent-foreground mb-1">
                 $ {r.cmd}
               </div>
-              <pre style={{
-                margin: 0,
-                whiteSpace: "pre-wrap",
-                wordBreak: "break-all",
-                color: r.result.exitCode === 0 ? "var(--text-primary)" : "var(--danger)",
-              }}>
+              <pre className={`m-0 whitespace-pre-wrap break-all ${
+                r.result.exitCode === 0 ? "text-foreground" : "text-destructive"
+              }`}>
                 {r.result.output.length > MAX_DISPLAY_LEN
                   ? r.result.output.slice(0, MAX_DISPLAY_LEN) + "\n... (output truncated)"
                   : r.result.output || "(no output)"}
               </pre>
               {r.result.exitCode !== 0 && (
-                <div style={{ color: "var(--warning)", fontSize: "11px", marginTop: "2px" }}>
+                <div className="text-warning text-[11px] mt-0.5">
                   exit code: {r.result.exitCode}
                 </div>
               )}

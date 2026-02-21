@@ -2,7 +2,16 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { Button } from "@/components/ui/button";
 import { PruneButton } from "./PruneButton";
+import {
+  Dialog,
+  DialogContent,
+  DialogDescription,
+  DialogFooter,
+  DialogHeader,
+  DialogTitle,
+} from "@/components/ui/dialog";
 
 interface Mecha {
   id: string;
@@ -128,60 +137,17 @@ export function MechaList() {
   }
 
   if (loading) {
-    return <p style={{ color: "var(--text-muted)", padding: "20px" }}>Loading...</p>;
+    return <p className="text-muted-foreground p-5">Loading...</p>;
   }
 
   const prunableCount = mechas.filter((m) => PRUNABLE_STATES.has(m.state)).length;
 
-  const createButton = (
-    <button
-      onClick={() => setShowCreate(!showCreate)}
-      style={{
-        padding: "6px 14px",
-        fontSize: "13px",
-        borderRadius: "6px",
-        border: "1px solid var(--accent)",
-        backgroundColor: showCreate ? "var(--accent)" : "transparent",
-        color: showCreate ? "#fff" : "var(--accent)",
-        cursor: "pointer",
-      }}
-    >
-      {showCreate ? "Cancel" : "+ New Mecha"}
-    </button>
-  );
-
-  const inputStyle: React.CSSProperties = {
-    flex: 1,
-    padding: "6px 10px",
-    fontSize: "13px",
-    fontFamily: "monospace",
-    borderRadius: "4px",
-    border: "1px solid var(--border)",
-    backgroundColor: "var(--bg-primary)",
-    color: "var(--text-primary)",
-    outline: "none",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    fontSize: "13px",
-    color: "var(--text-muted)",
-    whiteSpace: "nowrap",
-    minWidth: "110px",
-  };
+  const inputCls = "flex-1 px-2.5 py-1.5 text-[13px] font-mono rounded border border-border bg-background text-foreground outline-none";
 
   const createForm = showCreate && (
-    <form onSubmit={createMecha} style={{
-      display: "flex",
-      flexDirection: "column",
-      gap: "8px",
-      padding: "12px",
-      marginBottom: "12px",
-      borderRadius: "8px",
-      border: "1px solid var(--border)",
-      backgroundColor: "var(--bg-secondary)",
-    }}>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <label htmlFor="create-path" style={labelStyle}>Project path:</label>
+    <form onSubmit={createMecha} className="flex flex-col gap-2 p-3 mb-3 rounded-lg border border-border bg-card">
+      <div className="flex gap-2 items-center">
+        <label htmlFor="create-path" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Project path:</label>
         <input
           id="create-path"
           type="text"
@@ -189,11 +155,11 @@ export function MechaList() {
           onChange={(e) => setCreatePath(e.target.value)}
           placeholder="/path/to/project"
           disabled={creating}
-          style={inputStyle}
+          className={inputCls}
         />
       </div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <label htmlFor="create-claude-token" style={labelStyle}>Claude Setup Token:</label>
+      <div className="flex gap-2 items-center">
+        <label htmlFor="create-claude-token" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Claude Setup Token:</label>
         <input
           id="create-claude-token"
           type="password"
@@ -201,11 +167,11 @@ export function MechaList() {
           onChange={(e) => setClaudeToken(e.target.value)}
           placeholder="Leave empty to use host default"
           disabled={creating}
-          style={inputStyle}
+          className={inputCls}
         />
       </div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <label htmlFor="create-otp" style={labelStyle}>OTP Secret:</label>
+      <div className="flex gap-2 items-center">
+        <label htmlFor="create-otp" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">OTP Secret:</label>
         <input
           id="create-otp"
           type="password"
@@ -213,43 +179,34 @@ export function MechaList() {
           onChange={(e) => setOtp(e.target.value)}
           placeholder="Leave empty to use host default"
           disabled={creating}
-          style={inputStyle}
+          className={inputCls}
         />
       </div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
-        <label htmlFor="create-permission-mode" style={labelStyle}>Permission Mode:</label>
+      <div className="flex gap-2 items-center">
+        <label htmlFor="create-permission-mode" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Permission Mode:</label>
         <select
           id="create-permission-mode"
           value={permissionMode}
           onChange={(e) => setPermissionMode(e.target.value)}
           disabled={creating}
-          style={{ ...inputStyle, fontFamily: "inherit" }}
+          className={`${inputCls} font-sans`}
         >
           <option value="default">default</option>
           <option value="plan">plan</option>
           <option value="full-auto">full-auto</option>
         </select>
       </div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center", justifyContent: "flex-end" }}>
+      <div className="flex gap-2 items-center justify-end">
         {createError && (
-          <span style={{ fontSize: "12px", color: "var(--danger)", marginRight: "auto" }}>{createError}</span>
+          <span className="text-xs text-destructive mr-auto">{createError}</span>
         )}
-        <button
+        <Button
           type="submit"
           disabled={creating || !createPath.trim()}
-          style={{
-            padding: "6px 14px",
-            fontSize: "13px",
-            borderRadius: "4px",
-            border: "none",
-            backgroundColor: "var(--accent)",
-            color: "#fff",
-            cursor: creating || !createPath.trim() ? "not-allowed" : "pointer",
-            opacity: creating || !createPath.trim() ? 0.5 : 1,
-          }}
+          size="sm"
         >
           {creating ? "Creating..." : "Create"}
-        </button>
+        </Button>
       </div>
     </form>
   );
@@ -257,59 +214,51 @@ export function MechaList() {
   if (mechas.length === 0) {
     return (
       <div>
-        <div style={{ marginBottom: "16px" }}>{createButton}</div>
+        <div className="mb-4">
+          <Button
+            variant={showCreate ? "default" : "outline"}
+            size="sm"
+            onClick={() => setShowCreate(!showCreate)}
+            className="border-primary text-primary"
+          >
+            {showCreate ? "Cancel" : "+ New Mecha"}
+          </Button>
+        </div>
         {createForm}
-        <div style={{
-          padding: "40px 20px",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "14px",
-        }}>
+        <div className="py-10 px-5 text-center text-muted-foreground text-sm">
           No mechas found. Click &quot;+ New Mecha&quot; or use <code>mecha up &lt;path&gt;</code> to create one.
         </div>
       </div>
     );
   }
 
-  const stateColor = (state: string) => {
-    if (state === "running") return "var(--success)";
-    if (state === "exited" || state === "dead") return "var(--danger)";
-    return "var(--warning)";
+  const stateDotCls = (state: string) => {
+    if (state === "running") return "bg-success";
+    if (state === "exited" || state === "dead") return "bg-destructive";
+    return "bg-warning";
   };
-
-  const btnStyle = (color: string, disabled: boolean): React.CSSProperties => ({
-    padding: "4px 10px",
-    fontSize: "12px",
-    borderRadius: "4px",
-    border: "1px solid " + color,
-    backgroundColor: "transparent",
-    color,
-    opacity: disabled ? 0.4 : 1,
-    cursor: disabled ? "not-allowed" : "pointer",
-  });
 
   return (
     <div>
-      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
-        {createButton}
+      <div className="flex gap-2 items-center mb-3">
+        <Button
+          variant={showCreate ? "default" : "outline"}
+          size="sm"
+          onClick={() => setShowCreate(!showCreate)}
+        >
+          {showCreate ? "Cancel" : "+ New Mecha"}
+        </Button>
         <PruneButton prunableCount={prunableCount} onPruned={fetchMechas} />
       </div>
       {createForm}
-      <div style={{ overflowX: "auto" }}>
-      <table style={{
-        width: "100%",
-        borderCollapse: "collapse",
-        fontSize: "13px",
-      }}>
+      <div className="overflow-x-auto">
+      <table className="w-full border-collapse text-[13px]">
         <thead>
-          <tr style={{ borderBottom: "1px solid var(--border)" }}>
+          <tr className="border-b border-border">
             {["ID", "State", "Port", "Path", "Actions"].map((h) => (
-              <th key={h} style={{
-                padding: "10px 12px",
-                textAlign: "left",
-                color: "var(--text-muted)",
-                fontWeight: 500,
-              }}>{h}</th>
+              <th key={h} className="px-3 py-2.5 text-left text-muted-foreground font-medium">
+                {h}
+              </th>
             ))}
           </tr>
         </thead>
@@ -319,68 +268,59 @@ export function MechaList() {
             const isActing = acting === m.id;
             const isRunning = m.state === "running";
             return (
-              <tr key={m.name || m.id} style={{ borderBottom: "1px solid var(--border)" }}>
-                <td style={{ padding: "10px 12px" }}>
-                  <Link href={`/mechas/${m.id}`} style={{ fontFamily: "monospace" }}>
+              <tr key={m.name || m.id} className="border-b border-border">
+                <td className="px-3 py-2.5">
+                  <Link href={`/mechas/${m.id}`} className="font-mono">
                     {m.id}
                   </Link>
                 </td>
-                <td style={{ padding: "10px 12px" }}>
-                  <span style={{
-                    display: "inline-flex",
-                    alignItems: "center",
-                    gap: "6px",
-                  }}>
-                    <span style={{
-                      width: 8,
-                      height: 8,
-                      borderRadius: "50%",
-                      backgroundColor: stateColor(m.state),
-                    }} />
+                <td className="px-3 py-2.5">
+                  <span className="inline-flex items-center gap-1.5">
+                    <span className={`size-2 rounded-full ${stateDotCls(m.state)}`} />
                     {m.state}
                   </span>
                 </td>
-                <td style={{ padding: "10px 12px", fontFamily: "monospace" }}>
-                  {port ?? "—"}
+                <td className="px-3 py-2.5 font-mono">
+                  {port ?? "\u2014"}
                 </td>
-                <td style={{
-                  padding: "10px 12px",
-                  maxWidth: "200px",
-                  overflow: "hidden",
-                  textOverflow: "ellipsis",
-                  whiteSpace: "nowrap",
-                  color: "var(--text-muted)",
-                }}>
+                <td className="px-3 py-2.5 max-w-[200px] overflow-hidden text-ellipsis whitespace-nowrap text-muted-foreground">
                   {m.path}
                 </td>
-                <td style={{ padding: "10px 12px" }}>
-                  <div style={{ display: "flex", gap: "6px" }}>
+                <td className="px-3 py-2.5">
+                  <div className="flex gap-1.5">
                     {!isRunning && (
-                      <button
+                      <Button
+                        variant="outline"
+                        size="xs"
                         disabled={isActing}
                         onClick={() => action(m.id, "start")}
-                        style={btnStyle("var(--success)", isActing)}
-                      >Start</button>
+                        className="border-success text-success hover:bg-success/10"
+                      >Start</Button>
                     )}
                     {isRunning && (
-                      <button
+                      <Button
+                        variant="outline"
+                        size="xs"
                         disabled={isActing}
                         onClick={() => action(m.id, "stop")}
-                        style={btnStyle("var(--warning)", isActing)}
-                      >Stop</button>
+                        className="border-warning text-warning hover:bg-warning/10"
+                      >Stop</Button>
                     )}
                     {isRunning && (
-                      <button
+                      <Button
+                        variant="outline"
+                        size="xs"
                         disabled={isActing}
                         onClick={() => action(m.id, "restart")}
-                        style={btnStyle("var(--accent)", isActing)}
-                      >Restart</button>
+                      >Restart</Button>
                     )}
-                    <button
+                    <Button
+                      variant="outline"
+                      size="xs"
                       disabled={isActing}
                       onClick={() => setConfirmRemove(m.id)}
-                      style={btnStyle("var(--danger)", isActing)}
-                    >Remove</button>
+                      className="border-destructive text-destructive hover:bg-destructive/10"
+                    >Remove</Button>
                   </div>
                 </td>
               </tr>
@@ -390,98 +330,44 @@ export function MechaList() {
       </table>
       </div>
       {actionError && (
-        <div style={{
-          marginTop: "8px",
-          padding: "8px 12px",
-          fontSize: "13px",
-          color: "var(--danger)",
-          backgroundColor: "rgba(239,68,68,0.1)",
-          borderRadius: "6px",
-          border: "1px solid var(--danger)",
-          display: "flex",
-          alignItems: "center",
-          justifyContent: "space-between",
-        }}>
+        <div className="mt-2 px-3 py-2 text-[13px] text-destructive bg-destructive/10 rounded-md border border-destructive flex items-center justify-between">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError("")}
-            style={{ background: "none", border: "none", color: "var(--danger)", cursor: "pointer", fontSize: "16px" }}
-          >×</button>
+            className="bg-transparent border-none text-destructive cursor-pointer text-base"
+          >&times;</button>
         </div>
       )}
-      {confirmRemove && (
-        <div
-          onClick={() => { setConfirmRemove(null); setRemoveWithState(false); }}
-          style={{
-            position: "fixed",
-            inset: 0,
-            backgroundColor: "rgba(0,0,0,0.6)",
-            display: "flex",
-            alignItems: "center",
-            justifyContent: "center",
-            zIndex: 1000,
-          }}
-        >
-          <div
-            onClick={(e) => e.stopPropagation()}
-            style={{
-              backgroundColor: "var(--bg-secondary)",
-              border: "1px solid var(--border)",
-              borderRadius: "12px",
-              padding: "24px",
-              maxWidth: "400px",
-              width: "90%",
-            }}
-          >
-            <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "8px" }}>Remove Mecha</h3>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "12px" }}>
-              Remove <code style={{ color: "var(--text)" }}>{confirmRemove}</code>? This will delete the container.
-            </p>
-            <label style={{
-              display: "flex",
-              alignItems: "center",
-              gap: "6px",
-              fontSize: "13px",
-              color: "var(--text-muted)",
-              marginBottom: "16px",
-              cursor: "pointer",
-            }}>
-              <input
-                type="checkbox"
-                checked={removeWithState}
-                onChange={(e) => setRemoveWithState(e.target.checked)}
-              />
-              Also remove state volume
-            </label>
-            <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
-              <button
-                onClick={() => { setConfirmRemove(null); setRemoveWithState(false); }}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  borderRadius: "6px",
-                  border: "1px solid var(--border)",
-                  backgroundColor: "transparent",
-                  color: "var(--text)",
-                  cursor: "pointer",
-                }}
-              >Cancel</button>
-              <button
-                onClick={() => removeMecha(confirmRemove, removeWithState)}
-                style={{
-                  padding: "8px 16px",
-                  fontSize: "13px",
-                  borderRadius: "6px",
-                  border: "none",
-                  backgroundColor: "var(--danger)",
-                  color: "#fff",
-                  cursor: "pointer",
-                }}
-              >Remove</button>
-            </div>
-          </div>
-        </div>
-      )}
+
+      <Dialog open={!!confirmRemove} onOpenChange={(open) => { if (!open) { setConfirmRemove(null); setRemoveWithState(false); } }}>
+        <DialogContent className="max-w-sm">
+          <DialogHeader>
+            <DialogTitle>Remove Mecha</DialogTitle>
+            <DialogDescription>
+              Remove <code className="text-foreground">{confirmRemove}</code>? This will delete the container.
+            </DialogDescription>
+          </DialogHeader>
+          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer">
+            <input
+              type="checkbox"
+              checked={removeWithState}
+              onChange={(e) => setRemoveWithState(e.target.checked)}
+            />
+            Also remove state volume
+          </label>
+          <DialogFooter>
+            <Button variant="outline" onClick={() => { setConfirmRemove(null); setRemoveWithState(false); }}>
+              Cancel
+            </Button>
+            <Button
+              variant="destructive"
+              onClick={() => confirmRemove && removeMecha(confirmRemove, removeWithState)}
+            >
+              Remove
+            </Button>
+          </DialogFooter>
+        </DialogContent>
+      </Dialog>
     </div>
   );
 }

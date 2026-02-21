@@ -2,6 +2,7 @@
 
 import { useState } from "react";
 import { useRouter } from "next/navigation";
+import { Button } from "@/components/ui/button";
 
 export function MechaSettings({ mechaId }: { mechaId: string }) {
   const router = useRouter();
@@ -53,68 +54,50 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
     }
   }
 
-  const inputStyle: React.CSSProperties = {
-    width: "100%",
-    padding: "8px 12px",
-    fontSize: "13px",
-    fontFamily: "monospace",
-    borderRadius: "6px",
-    border: "1px solid var(--border)",
-    backgroundColor: "var(--bg-primary)",
-    color: "var(--text-primary)",
-    outline: "none",
-    boxSizing: "border-box",
-  };
-
-  const labelStyle: React.CSSProperties = {
-    display: "block",
-    fontSize: "12px",
-    color: "var(--text-muted)",
-    marginBottom: "4px",
-  };
+  const inputCls = "w-full px-3 py-2 text-[13px] font-mono rounded-md border border-border bg-background text-foreground outline-none";
 
   return (
     <form onSubmit={handleSubmit}>
-      <div style={{ display: "grid", gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))", gap: "12px", marginBottom: "12px" }}>
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mb-3">
         <div>
-          <label style={labelStyle}>Claude Setup Token</label>
+          <label className="block text-xs text-muted-foreground mb-1">Claude Setup Token</label>
           <input
             type="password"
             placeholder="Leave empty to keep current"
             value={claudeToken}
             onChange={(e) => setClaudeToken(e.target.value)}
-            style={inputStyle}
+            className={inputCls}
             disabled={loading}
           />
         </div>
         <div>
-          <label style={labelStyle}>Anthropic API Key</label>
+          <label className="block text-xs text-muted-foreground mb-1">Anthropic API Key</label>
           <input
             type="password"
             placeholder="Leave empty to keep current"
             value={anthropicApiKey}
             onChange={(e) => setAnthropicApiKey(e.target.value)}
-            style={inputStyle}
+            className={inputCls}
             disabled={loading}
           />
         </div>
         <div>
-          <label style={labelStyle}>OTP Secret</label>
+          <label className="block text-xs text-muted-foreground mb-1">OTP Secret</label>
           <input
             type="password"
             placeholder="Leave empty to keep current"
             value={otp}
             onChange={(e) => setOtp(e.target.value)}
-            style={inputStyle}
+            className={inputCls}
             disabled={loading}
           />
         </div>
         <div>
-          <label style={labelStyle}>Permission Mode</label>
+          <label className="block text-xs text-muted-foreground mb-1">Permission Mode</label>
           <select
             value={permissionMode}
             onChange={(e) => setPermissionMode(e.target.value)}
-            style={inputStyle}
+            className={inputCls}
             disabled={loading}
           >
             <option value="">Keep current</option>
@@ -125,28 +108,20 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
         </div>
       </div>
 
-      <div style={{ display: "flex", alignItems: "center", gap: "12px" }}>
-        <button
+      <div className="flex items-center gap-3">
+        <Button
           type="submit"
+          variant="outline"
+          size="sm"
           disabled={!hasInput || loading}
-          style={{
-            padding: "6px 16px",
-            fontSize: "13px",
-            borderRadius: "6px",
-            border: "1px solid var(--border)",
-            backgroundColor: hasInput && !loading ? "var(--bg-secondary)" : "transparent",
-            color: hasInput && !loading ? "var(--text-primary)" : "var(--text-muted)",
-            cursor: hasInput && !loading ? "pointer" : "not-allowed",
-          }}
         >
           {loading ? "Updating..." : "Update"}
-        </button>
+        </Button>
 
         {message && (
-          <span style={{
-            fontSize: "13px",
-            color: message.type === "success" ? "var(--success)" : "var(--danger)",
-          }}>
+          <span className={`text-[13px] ${
+            message.type === "success" ? "text-success" : "text-destructive"
+          }`}>
             {message.text}
           </span>
         )}

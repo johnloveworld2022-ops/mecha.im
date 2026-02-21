@@ -12,6 +12,7 @@ import { MechaEnv } from "@/components/MechaEnv";
 import { MechaExec } from "@/components/MechaExec";
 import { MechaInspect } from "@/components/MechaInspect";
 import { MechaUpdate } from "@/components/MechaUpdate";
+import { ThemeToggle } from "@/components/ThemeToggle";
 
 export default async function MechaDetailPage({
   params,
@@ -37,142 +38,89 @@ export default async function MechaDetailPage({
   const portBindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
   const hostPort = portBindings?.[0]?.HostPort;
 
-  const stateColor = isRunning ? "var(--success)" : "var(--danger)";
-
   return (
-    <main style={{ maxWidth: "1200px", margin: "0 auto", padding: "24px" }}>
-      <div style={{ marginBottom: "24px" }}>
-        <Link href="/" style={{ fontSize: "13px", color: "var(--text-muted)" }}>
+    <main className="mx-auto max-w-[1200px] p-6">
+      <div className="flex items-center justify-between mb-6">
+        <Link href="/" className="text-[13px] text-muted-foreground">
           &larr; Back to Dashboard
         </Link>
+        <ThemeToggle />
       </div>
 
-      <div style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "12px",
-        marginBottom: "24px",
-      }}>
-        <h1 style={{ fontSize: "20px", fontWeight: 600, fontFamily: "monospace" }}>{id}</h1>
-        <span style={{
-          display: "inline-flex",
-          alignItems: "center",
-          gap: "6px",
-          fontSize: "13px",
-          padding: "3px 10px",
-          borderRadius: "4px",
-          border: `1px solid ${stateColor}`,
-          color: stateColor,
-        }}>
-          <span style={{
-            width: 7,
-            height: 7,
-            borderRadius: "50%",
-            backgroundColor: stateColor,
-          }} />
+      <div className="flex items-center gap-3 mb-6">
+        <h1 className="text-xl font-semibold font-mono">{id}</h1>
+        <span className={`inline-flex items-center gap-1.5 text-[13px] px-2.5 py-0.5 rounded border ${
+          isRunning
+            ? "border-success text-success"
+            : "border-destructive text-destructive"
+        }`}>
+          <span className={`size-[7px] rounded-full ${
+            isRunning ? "bg-success" : "bg-destructive"
+          }`} />
           {state?.Status ?? "unknown"}
         </span>
         <MechaUpdate mechaId={id} />
       </div>
 
-      {/* Status card */}
-      <div style={{
-        display: "grid",
-        gridTemplateColumns: "repeat(auto-fit, minmax(200px, 1fr))",
-        gap: "12px",
-        marginBottom: "24px",
-      }}>
+      {/* Chat with mecha */}
+      {isRunning && (
+        <Section title="Chat">
+          <MechaChatWithSessions mechaId={id} />
+        </Section>
+      )}
+
+      {/* Status cards */}
+      <div className="grid grid-cols-[repeat(auto-fit,minmax(200px,1fr))] gap-3 mb-6">
         <InfoCard label="Container" value={name} />
-        <InfoCard label="Image" value={info.Config?.Image ?? "—"} />
-        <InfoCard label="Port" value={hostPort ? `:${hostPort}` : "—"} />
+        <InfoCard label="Image" value={info.Config?.Image ?? "\u2014"} />
+        <InfoCard label="Port" value={hostPort ? `:${hostPort}` : "\u2014"} />
         <InfoCard label="Created" value={new Date(info.Created).toLocaleString()} />
-        <InfoCard label="Path" value={info.Config?.Labels?.[`mecha.path`] ?? "—"} />
+        <InfoCard label="Path" value={info.Config?.Labels?.[`mecha.path`] ?? "\u2014"} />
         <InfoCard
           label="PID"
-          value={state?.Pid ? String(state.Pid) : "—"}
+          value={state?.Pid ? String(state.Pid) : "\u2014"}
         />
       </div>
 
       {/* Settings */}
-      <section style={{ marginBottom: "24px" }}>
-        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Settings</h2>
-        <div style={{
-          padding: "16px",
-          borderRadius: "8px",
-          backgroundColor: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-        }}>
+      <Section title="Settings">
+        <div className="p-4 rounded-lg bg-card border border-border">
           <MechaSettings mechaId={id} />
         </div>
-      </section>
+      </Section>
 
       {/* Environment */}
-      <section style={{ marginBottom: "24px" }}>
-        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Environment</h2>
-        <div style={{
-          padding: "16px",
-          borderRadius: "8px",
-          backgroundColor: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-        }}>
+      <Section title="Environment">
+        <div className="p-4 rounded-lg bg-card border border-border">
           <MechaEnv mechaId={id} />
         </div>
-      </section>
+      </Section>
 
       {/* Execute Command (only when running) */}
       {isRunning && (
-        <section style={{ marginBottom: "24px" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Execute Command</h2>
-          <div style={{
-            padding: "16px",
-            borderRadius: "8px",
-            backgroundColor: "var(--bg-secondary)",
-            border: "1px solid var(--border)",
-          }}>
+        <Section title="Execute Command">
+          <div className="p-4 rounded-lg bg-card border border-border">
             <MechaExec mechaId={id} />
           </div>
-        </section>
-      )}
-
-      {/* Chat with mecha */}
-      {isRunning && (
-        <section style={{ marginBottom: "24px" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Chat</h2>
-          <MechaChatWithSessions mechaId={id} />
-        </section>
+        </Section>
       )}
 
       {/* Logs */}
       {isRunning && (
-        <section style={{ marginBottom: "24px" }}>
-          <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Logs</h2>
+        <Section title="Logs">
           <LogViewer mechaId={id} />
-        </section>
+        </Section>
       )}
 
       {/* Inspect */}
-      <section style={{ marginBottom: "24px" }}>
-        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Inspect</h2>
-        <div style={{
-          padding: "16px",
-          borderRadius: "8px",
-          backgroundColor: "var(--bg-secondary)",
-          border: "1px solid var(--border)",
-        }}>
+      <Section title="Inspect">
+        <div className="p-4 rounded-lg bg-card border border-border">
           <MechaInspect mechaId={id} />
         </div>
-      </section>
+      </Section>
 
       {!isRunning && (
-        <div style={{
-          padding: "20px",
-          textAlign: "center",
-          color: "var(--text-muted)",
-          fontSize: "14px",
-          backgroundColor: "var(--bg-secondary)",
-          borderRadius: "8px",
-          border: "1px solid var(--border)",
-        }}>
+        <div className="p-5 text-center text-muted-foreground text-sm bg-card rounded-lg border border-border">
           Container is not running. Start it to view logs, chat, and execute commands.
         </div>
       )}
@@ -180,24 +128,22 @@ export default async function MechaDetailPage({
   );
 }
 
+function Section({ title, children }: { title: string; children: React.ReactNode }) {
+  return (
+    <section className="mb-6">
+      <h2 className="text-base font-medium mb-3">{title}</h2>
+      {children}
+    </section>
+  );
+}
+
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
-    <div style={{
-      padding: "12px 16px",
-      borderRadius: "8px",
-      backgroundColor: "var(--bg-secondary)",
-      border: "1px solid var(--border)",
-    }}>
-      <div style={{ fontSize: "11px", color: "var(--text-muted)", marginBottom: "4px" }}>
+    <div className="px-4 py-3 rounded-lg bg-card border border-border">
+      <div className="text-[11px] text-muted-foreground mb-1">
         {label}
       </div>
-      <div style={{
-        fontSize: "13px",
-        fontFamily: "monospace",
-        overflow: "hidden",
-        textOverflow: "ellipsis",
-        whiteSpace: "nowrap",
-      }}>
+      <div className="text-[13px] font-mono overflow-hidden text-ellipsis whitespace-nowrap">
         {value}
       </div>
     </div>

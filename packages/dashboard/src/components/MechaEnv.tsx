@@ -37,29 +37,21 @@ export function MechaEnv({ mechaId }: { mechaId: string }) {
   }, [fetchEnv]);
 
   if (loading) {
-    return <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>Loading environment...</p>;
+    return <p className="text-muted-foreground text-[13px]">Loading environment...</p>;
   }
 
   return (
     <div>
       {error && (
-        <p style={{ color: "var(--danger)", fontSize: "13px", marginBottom: "8px" }}>
+        <p className="text-destructive text-[13px] mb-2">
           {error}
           <button
             onClick={() => { setError(""); fetchEnv(); }}
-            style={{ marginLeft: "8px", background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "13px" }}
+            className="ml-2 bg-transparent border-none text-primary cursor-pointer text-[13px]"
           >Retry</button>
         </p>
       )}
-      <label style={{
-        display: "flex",
-        alignItems: "center",
-        gap: "6px",
-        fontSize: "12px",
-        color: "var(--text-muted)",
-        marginBottom: "8px",
-        cursor: "pointer",
-      }}>
+      <label className="flex items-center gap-1.5 text-xs text-muted-foreground mb-2 cursor-pointer">
         <input
           type="checkbox"
           checked={showSecrets}
@@ -68,33 +60,23 @@ export function MechaEnv({ mechaId }: { mechaId: string }) {
         Show secrets
       </label>
       {env.length === 0 ? (
-        <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>No environment variables.</p>
+        <p className="text-muted-foreground text-[13px]">No environment variables.</p>
       ) : (
-        <div style={{ overflowX: "auto" }}>
-          <table style={{
-            width: "100%",
-            borderCollapse: "collapse",
-            fontSize: "13px",
-          }}>
+        <div className="overflow-x-auto">
+          <table className="w-full border-collapse text-[13px]">
             <thead>
-              <tr style={{ borderBottom: "1px solid var(--border)" }}>
-                <th style={{ padding: "8px 12px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>Key</th>
-                <th style={{ padding: "8px 12px", textAlign: "left", color: "var(--text-muted)", fontWeight: 500 }}>Value</th>
+              <tr className="border-b border-border">
+                <th className="px-3 py-2 text-left text-muted-foreground font-medium">Key</th>
+                <th className="px-3 py-2 text-left text-muted-foreground font-medium">Value</th>
               </tr>
             </thead>
             <tbody>
               {env.map((e) => (
-                <tr key={e.key} style={{ borderBottom: "1px solid var(--border)" }}>
-                  <td style={{ padding: "8px 12px", fontFamily: "monospace", whiteSpace: "nowrap" }}>{e.key}</td>
-                  <td style={{
-                    padding: "8px 12px",
-                    fontFamily: "monospace",
-                    maxWidth: "400px",
-                    overflow: "hidden",
-                    textOverflow: "ellipsis",
-                    whiteSpace: "nowrap",
-                    color: e.value === "***" ? "var(--text-muted)" : "var(--text-primary)",
-                  }}>{e.value}</td>
+                <tr key={e.key} className="border-b border-border">
+                  <td className="px-3 py-2 font-mono whitespace-nowrap">{e.key}</td>
+                  <td className={`px-3 py-2 font-mono max-w-[400px] overflow-hidden text-ellipsis whitespace-nowrap ${
+                    e.value === "***" ? "text-muted-foreground" : "text-foreground"
+                  }`}>{e.value}</td>
                 </tr>
               ))}
             </tbody>
