@@ -46,21 +46,23 @@ export function createServer(opts: ServerOptions): FastifyInstance {
     id: opts.mechaId, version: opts.version ?? "0.1.0", uptime: getUptime(), state: "running" as MechaState,
   }));
 
-  if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer({ mechaId: opts.mechaId, authToken: token }));
   registerAgentRoutes(app, opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined);
 
   // --- session management ---
   const agentOpts: AgentOptions | undefined = opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined;
+  let sessionManager: SessionManager | undefined;
   if (opts.db && agentOpts) {
-    const sessionManager = new SessionManager(opts.db, agentOpts);
+    sessionManager = new SessionManager(opts.db, agentOpts);
     sessionManager.resetBusySessions();
     registerSessionRoutes(app, sessionManager);
     sessionManager.startCleanup();
-    app.addHook("onClose", async () => sessionManager.shutdown());
+    app.addHook("onClose", async () => sessionManager!.shutdown());
   } else {
     // Register routes that return 503 when sessions are unavailable
     registerSessionRoutes(app, undefined);
   }
+
+  if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer({ mechaId: opts.mechaId, sessionManager }));
 
   // --- graceful shutdown ---
   /* v8 ignore start */

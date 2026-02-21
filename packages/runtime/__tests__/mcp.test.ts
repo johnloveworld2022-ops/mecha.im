@@ -1,13 +1,37 @@
-import { describe, it, expect, vi, beforeEach, afterEach, beforeAll, afterAll } from "vitest";
+import { describe, it, expect, vi, beforeAll, afterAll } from "vitest";
 import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { InMemoryTransport } from "@modelcontextprotocol/sdk/inMemory.js";
 import { createMcpServer, type McpServerHandle, type CreateMcpServerOptions } from "../src/mcp/server.js";
+import type { SessionManager } from "../src/agent/session-manager.js";
 
 const TEST_ID = "mx-test-abc123";
-const TEST_TOKEN = "test-auth-token-abc123";
+
+function createMockSessionManager(overrides?: Partial<SessionManager>): SessionManager {
+  return {
+    create: vi.fn().mockReturnValue({
+      sessionId: "s-new-123",
+      title: "Test",
+      state: "idle",
+      messageCount: 0,
+      lastMessageAt: null,
+      createdAt: "2025-01-01T00:00:00Z",
+    }),
+    list: vi.fn().mockReturnValue([
+      { sessionId: "s1", title: "Test", state: "idle", messageCount: 0, lastMessageAt: null, createdAt: "2025-01-01T00:00:00Z" },
+    ]),
+    delete: vi.fn().mockReturnValue(true),
+    sendMessage: vi.fn().mockReturnValue((async function* () {
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "Agent reply" }] },
+      };
+    })()),
+    ...overrides,
+  } as unknown as SessionManager;
+}
 
 function makeHandle(overrides?: Partial<CreateMcpServerOptions>): McpServerHandle {
-  return createMcpServer({ mechaId: TEST_ID, authToken: TEST_TOKEN, ...overrides });
+  return createMcpServer({ mechaId: TEST_ID, ...overrides });
 }
 
 async function connectClient(handle: McpServerHandle): Promise<Client> {
@@ -119,23 +143,10 @@ describe("MCP tools - mecha_workspace_read", () => {
 });
 
 describe("MCP tools - mecha_chat", () => {
-  let handle: McpServerHandle;
-  let client: Client;
-
-  beforeEach(async () => {
-    vi.stubGlobal("fetch", vi.fn());
-    handle = makeHandle();
-    client = await connectClient(handle);
-  });
-
-  afterEach(async () => {
-    await client.close();
-    vi.unstubAllGlobals();
-  });
-
-  it("sends message and returns response text", async () => {
-    const mockFetch = vi.mocked(fetch);
-    mockFetch.mockResolvedValueOnce(new Response("Agent reply here", { status: 200 }));
+  it("sends message via sessionManager and returns response text", async () => {
+    const sm = createMockSessionManager();
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_chat",
@@ -143,49 +154,22 @@ describe("MCP tools - mecha_chat", () => {
     });
 
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toBe("Agent reply here");
+    expect(content[0]!.text).toBe("Agent reply");
     expect(result.isError).toBeUndefined();
+    expect(sm.create).toHaveBeenCalledOnce();
+    expect(sm.sendMessage).toHaveBeenCalledWith("s-new-123", "Hello agent");
 
-    expect(mockFetch).toHaveBeenCalledOnce();
-    const [url, init] = mockFetch.mock.calls[0]!;
-    expect(url).toBe("http://127.0.0.1:3000/api/chat");
-    expect((init as RequestInit).method).toBe("POST");
-    const headers = (init as RequestInit).headers as Headers;
-    expect(headers.get("Authorization")).toBe(`Bearer ${TEST_TOKEN}`);
+    await client.close();
   });
 
-  it("parses SSE frames from agent response", async () => {
-    const sseBody = [
-      'data: {"type":"content_block_delta","delta":{"text":"Hello"}}',
-      'data: {"type":"content_block_delta","delta":{"text":" world"}}',
-      "data: [DONE]",
-    ].join("\n");
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(sseBody, { status: 200 }));
-
-    const result = await client.callTool({
-      name: "mecha_chat",
-      arguments: { message: "Hi" },
+  it("returns error when sessionManager throws", async () => {
+    const sm = createMockSessionManager({
+      sendMessage: vi.fn().mockReturnValue((async function* () {
+        throw new Error("Connection refused");
+      })()),
     });
-
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toBe("Hello world");
-  });
-
-  it("returns error when agent responds with non-ok status", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 500, statusText: "Internal Server Error" }));
-
-    const result = await client.callTool({
-      name: "mecha_chat",
-      arguments: { message: "Hello" },
-    });
-
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toContain("Agent error: 500");
-    expect(result.isError).toBe(true);
-  });
-
-  it("returns error when fetch throws", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error("Connection refused"));
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_chat",
@@ -196,27 +180,52 @@ describe("MCP tools - mecha_chat", () => {
     expect(content[0]!.text).toContain("Chat request failed:");
     expect(content[0]!.text).toContain("Connection refused");
     expect(result.isError).toBe(true);
+
+    await client.close();
+  });
+
+  it("returns error when no sessionManager", async () => {
+    const handle = makeHandle();
+    const client = await connectClient(handle);
+
+    const result = await client.callTool({
+      name: "mecha_chat",
+      arguments: { message: "Hello" },
+    });
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]!.text).toBe("Sessions not available");
+    expect(result.isError).toBe(true);
+
+    await client.close();
+  });
+
+  it("returns (no response) when stream yields no text", async () => {
+    const sm = createMockSessionManager({
+      sendMessage: vi.fn().mockReturnValue((async function* () {
+        yield { type: "other", data: {} };
+      })()),
+    });
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
+
+    const result = await client.callTool({
+      name: "mecha_chat",
+      arguments: { message: "Hello" },
+    });
+
+    const content = result.content as Array<{ type: string; text: string }>;
+    expect(content[0]!.text).toBe("(no response)");
+
+    await client.close();
   });
 });
 
 describe("MCP tools - session management", () => {
-  let handle: McpServerHandle;
-  let client: Client;
-
-  beforeEach(async () => {
-    vi.stubGlobal("fetch", vi.fn());
-    handle = makeHandle();
-    client = await connectClient(handle);
-  });
-
-  afterEach(async () => {
-    await client.close();
-    vi.unstubAllGlobals();
-  });
-
   it("mecha_session_list returns sessions array", async () => {
-    const sessions = [{ id: "s1", title: "Test" }];
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(sessions), { status: 200 }));
+    const sm = createMockSessionManager();
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_list",
@@ -224,11 +233,32 @@ describe("MCP tools - session management", () => {
     });
 
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(JSON.parse(content[0]!.text)).toEqual(sessions);
+    const parsed = JSON.parse(content[0]!.text);
+    expect(parsed).toHaveLength(1);
+    expect(parsed[0].sessionId).toBe("s1");
+
+    await client.close();
   });
 
-  it("mecha_session_list returns error on failure", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 503, statusText: "Service Unavailable" }));
+  it("mecha_session_list returns error when no sessionManager", async () => {
+    const handle = makeHandle();
+    const client = await connectClient(handle);
+
+    const result = await client.callTool({
+      name: "mecha_session_list",
+      arguments: {},
+    });
+
+    expect(result.isError).toBe(true);
+    await client.close();
+  });
+
+  it("mecha_session_list returns error on exception", async () => {
+    const sm = createMockSessionManager({
+      list: vi.fn().mockImplementation(() => { throw new Error("DB error"); }),
+    });
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_list",
@@ -236,13 +266,15 @@ describe("MCP tools - session management", () => {
     });
 
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toContain("503");
+    expect(content[0]!.text).toContain("DB error");
     expect(result.isError).toBe(true);
+    await client.close();
   });
 
   it("mecha_session_create creates and returns session", async () => {
-    const session = { id: "s-new", title: "My Session" };
-    vi.mocked(fetch).mockResolvedValueOnce(new Response(JSON.stringify(session), { status: 200 }));
+    const sm = createMockSessionManager();
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_create",
@@ -250,14 +282,19 @@ describe("MCP tools - session management", () => {
     });
 
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(JSON.parse(content[0]!.text)).toEqual(session);
+    const parsed = JSON.parse(content[0]!.text);
+    expect(parsed.sessionId).toBe("s-new-123");
+    expect(sm.create).toHaveBeenCalledWith({ title: "My Session" });
 
-    const [, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(JSON.parse((init as RequestInit).body as string)).toEqual({ title: "My Session" });
+    await client.close();
   });
 
   it("mecha_session_create handles error", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 429, statusText: "Too Many Requests" }));
+    const sm = createMockSessionManager({
+      create: vi.fn().mockImplementation(() => { throw new Error("Cap reached"); }),
+    });
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_create",
@@ -265,10 +302,13 @@ describe("MCP tools - session management", () => {
     });
 
     expect(result.isError).toBe(true);
+    await client.close();
   });
 
   it("mecha_session_message sends message in session", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("Response text", { status: 200 }));
+    const sm = createMockSessionManager();
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_message",
@@ -276,14 +316,20 @@ describe("MCP tools - session management", () => {
     });
 
     const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toBe("Response text");
+    expect(content[0]!.text).toBe("Agent reply");
+    expect(sm.sendMessage).toHaveBeenCalledWith("s1", "Hello");
 
-    const [url] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe("http://127.0.0.1:3000/api/sessions/s1/message");
+    await client.close();
   });
 
   it("mecha_session_message handles error", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 404, statusText: "Not Found" }));
+    const sm = createMockSessionManager({
+      sendMessage: vi.fn().mockReturnValue((async function* () {
+        throw new Error("Not found");
+      })()),
+    });
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_message",
@@ -291,10 +337,13 @@ describe("MCP tools - session management", () => {
     });
 
     expect(result.isError).toBe(true);
+    await client.close();
   });
 
   it("mecha_session_delete removes session", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 200 }));
+    const sm = createMockSessionManager();
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_delete",
@@ -305,14 +354,17 @@ describe("MCP tools - session management", () => {
     const parsed = JSON.parse(content[0]!.text);
     expect(parsed.deleted).toBe(true);
     expect(parsed.sessionId).toBe("s1");
+    expect(sm.delete).toHaveBeenCalledWith("s1");
 
-    const [url, init] = vi.mocked(fetch).mock.calls[0]!;
-    expect(url).toBe("http://127.0.0.1:3000/api/sessions/s1");
-    expect((init as RequestInit).method).toBe("DELETE");
+    await client.close();
   });
 
   it("mecha_session_delete handles error", async () => {
-    vi.mocked(fetch).mockResolvedValueOnce(new Response("", { status: 404, statusText: "Not Found" }));
+    const sm = createMockSessionManager({
+      delete: vi.fn().mockImplementation(() => { throw new Error("Not found"); }),
+    });
+    const handle = makeHandle({ sessionManager: sm });
+    const client = await connectClient(handle);
 
     const result = await client.callTool({
       name: "mecha_session_delete",
@@ -320,18 +372,6 @@ describe("MCP tools - session management", () => {
     });
 
     expect(result.isError).toBe(true);
-  });
-
-  it("session tools handle fetch exceptions", async () => {
-    vi.mocked(fetch).mockRejectedValueOnce(new Error("Network error"));
-
-    const result = await client.callTool({
-      name: "mecha_session_list",
-      arguments: {},
-    });
-
-    const content = result.content as Array<{ type: string; text: string }>;
-    expect(content[0]!.text).toContain("Network error");
-    expect(result.isError).toBe(true);
+    await client.close();
   });
 });

@@ -5,6 +5,7 @@ import { z } from "zod";
 import { randomUUID } from "node:crypto";
 import { resolve, relative } from "node:path";
 import { readdir, readFile } from "node:fs/promises";
+import type { SessionManager } from "../agent/session-manager.js";
 
 const WORKSPACE_ROOT = "/home/mecha";
 const MAX_SESSIONS = 100;
@@ -30,7 +31,7 @@ export interface McpServerHandle {
 
 export interface CreateMcpServerOptions {
   mechaId: string;
-  authToken: string;
+  sessionManager?: SessionManager;
 }
 
 /**
@@ -43,7 +44,7 @@ export function createMcpServer(opts: CreateMcpServerOptions): McpServerHandle {
   );
 
   // Register built-in tools
-  registerDefaultTools(mcpServer, opts.authToken);
+  registerDefaultTools(mcpServer, opts.sessionManager);
 
   return { mcpServer };
 }
@@ -147,79 +148,32 @@ export function registerMcpRoutes(
   });
 }
 
-/** Build headers ensuring auth cannot be overridden by caller */
-function buildHeaders(authToken: string, extra?: Record<string, string>): Headers {
-  const headers = new Headers(extra);
-  headers.set("Content-Type", "application/json");
-  headers.set("Authorization", `Bearer ${authToken}`);
-  return headers;
-}
-
-/** JSON endpoints — 30s timeout */
-async function agentFetch(
-  path: string,
-  authToken: string,
-  init?: RequestInit,
-): Promise<Response> {
-  return fetch(`http://127.0.0.1:3000${path}`, {
-    ...init,
-    headers: buildHeaders(authToken, init?.headers as Record<string, string> | undefined),
-    signal: init?.signal ?? AbortSignal.timeout(30_000),
-  });
-}
-
-/** SSE streaming endpoints — 5min timeout, returns parsed text */
-async function agentStream(
-  path: string,
-  authToken: string,
-  init?: RequestInit,
-): Promise<string> {
-  const res = await fetch(`http://127.0.0.1:3000${path}`, {
-    ...init,
-    headers: buildHeaders(authToken, init?.headers as Record<string, string> | undefined),
-    signal: init?.signal ?? AbortSignal.timeout(300_000),
-  });
-  if (!res.ok) throw new Error(`Agent error: ${res.status} ${res.statusText}`);
-  return consumeSseText(res);
-}
-
 /**
- * Consume an SSE response and extract text content from `data:` frames.
- * Each SSE `data:` line contains a JSON message from the Claude agent SDK.
- * We aggregate all `text` fields from content blocks.
+ * Collect text from a session sendMessage stream.
+ * Extracts text content blocks from assistant messages.
  */
-async function consumeSseText(res: Response): Promise<string> {
-  const raw = await res.text();
-  const lines = raw.split("\n");
+async function collectStreamText(stream: AsyncIterable<unknown>): Promise<string> {
   const parts: string[] = [];
-  for (const line of lines) {
-    if (!line.startsWith("data: ")) continue;
-    const payload = line.slice(6).trim();
-    if (payload === "[DONE]" || !payload) continue;
-    try {
-      const msg = JSON.parse(payload);
-      // Claude Agent SDK streams content_block_delta with text
-      if (msg.type === "content_block_delta" && msg.delta?.text) {
-        parts.push(msg.delta.text);
-      } else if (msg.type === "message" && Array.isArray(msg.content)) {
-        for (const block of msg.content) {
-          if (block.type === "text" && block.text) parts.push(block.text);
+  for await (const msg of stream) {
+    const sdkMsg = msg as Record<string, unknown>;
+    if (sdkMsg.type === "assistant" && sdkMsg.message) {
+      const content = (sdkMsg.message as Record<string, unknown>).content as Array<Record<string, unknown>> | undefined;
+      if (Array.isArray(content)) {
+        for (const block of content) {
+          if (block.type === "text" && typeof block.text === "string") {
+            parts.push(block.text);
+          }
         }
-      } else if (typeof msg.text === "string") {
-        parts.push(msg.text);
       }
-    } catch {
-      // Non-JSON data line — include as raw text
-      parts.push(payload);
     }
   }
-  return parts.length > 0 ? parts.join("") : raw;
+  return parts.join("");
 }
 
 /**
  * Register default MCP tools for a Mecha runtime.
  */
-function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
+function registerDefaultTools(mcpServer: McpServer, sessionManager?: SessionManager): void {
   mcpServer.tool("mecha_status", "Get the current status of this Mecha instance", {}, async () =>
     textContent(JSON.stringify({ status: "running", timestamp: new Date().toISOString() })),
   );
@@ -252,19 +206,18 @@ function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
     },
   );
 
-  // --- Agent interaction tools ---
+  // --- Agent interaction tools (require SessionManager) ---
 
   mcpServer.tool(
     "mecha_chat",
     "Send a message to the Claude agent running in this Mecha",
     { message: z.string().describe("The message to send to the agent") },
     async ({ message }) => {
+      if (!sessionManager) return textContent("Sessions not available", true);
       try {
-        const text = await agentStream("/api/chat", authToken, {
-          method: "POST",
-          body: JSON.stringify({ message }),
-        });
-        return textContent(text);
+        const session = sessionManager.create({ title: `MCP chat ${new Date().toISOString()}` });
+        const text = await collectStreamText(sessionManager.sendMessage(session.sessionId, message));
+        return textContent(text || "(no response)");
       } catch (err) {
         return textContent(`Chat request failed: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -278,10 +231,9 @@ function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
     "List all conversation sessions",
     {},
     async () => {
+      if (!sessionManager) return textContent("Sessions not available", true);
       try {
-        const res = await agentFetch("/api/sessions", authToken);
-        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
-        return textContent(await res.text());
+        return textContent(JSON.stringify(sessionManager.list()));
       } catch (err) {
         return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -293,13 +245,10 @@ function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
     "Create a new conversation session",
     { title: z.string().optional().describe("Optional title for the session") },
     async ({ title }) => {
+      if (!sessionManager) return textContent("Sessions not available", true);
       try {
-        const res = await agentFetch("/api/sessions", authToken, {
-          method: "POST",
-          body: JSON.stringify({ title }),
-        });
-        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
-        return textContent(await res.text());
+        const session = sessionManager.create({ title });
+        return textContent(JSON.stringify(session));
       } catch (err) {
         return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -314,13 +263,10 @@ function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
       message: z.string().describe("The message to send"),
     },
     async ({ sessionId, message }) => {
+      if (!sessionManager) return textContent("Sessions not available", true);
       try {
-        const sid = encodeURIComponent(sessionId);
-        const text = await agentStream(`/api/sessions/${sid}/message`, authToken, {
-          method: "POST",
-          body: JSON.stringify({ message }),
-        });
-        return textContent(text);
+        const text = await collectStreamText(sessionManager.sendMessage(sessionId, message));
+        return textContent(text || "(no response)");
       } catch (err) {
         return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
       }
@@ -332,11 +278,10 @@ function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
     "Delete a conversation session",
     { sessionId: z.string().describe("The session ID to delete") },
     async ({ sessionId }) => {
+      if (!sessionManager) return textContent("Sessions not available", true);
       try {
-        const sid = encodeURIComponent(sessionId);
-        const res = await agentFetch(`/api/sessions/${sid}`, authToken, { method: "DELETE" });
-        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
-        return textContent(JSON.stringify({ deleted: true, sessionId }));
+        const deleted = sessionManager.delete(sessionId);
+        return textContent(JSON.stringify({ deleted, sessionId }));
       } catch (err) {
         return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
       }
