@@ -18,6 +18,9 @@ import {
   ConfigureNoFieldsError,
   TokenNotFoundError,
   ChatRequestFailedError,
+  SessionNotFoundError,
+  SessionBusyError,
+  SessionCapReachedError,
   toHttpStatus,
   toExitCode,
   toUserMessage,
@@ -91,6 +94,28 @@ describe("error classes", () => {
     expect(err.code).toBe("CHAT_REQUEST_FAILED");
     expect(err).toBeInstanceOf(MechaError);
   });
+
+  it("SessionNotFoundError has correct message and code", () => {
+    const err = new SessionNotFoundError("sess-abc");
+    expect(err.message).toBe("Session not found: sess-abc");
+    expect(err.code).toBe("SESSION_NOT_FOUND");
+    expect(err).toBeInstanceOf(MechaError);
+    expect(err).toBeInstanceOf(Error);
+  });
+
+  it("SessionBusyError has correct message and code", () => {
+    const err = new SessionBusyError("sess-abc");
+    expect(err.message).toBe("Session is busy: sess-abc");
+    expect(err.code).toBe("SESSION_BUSY");
+    expect(err).toBeInstanceOf(MechaError);
+  });
+
+  it("SessionCapReachedError has correct message and code", () => {
+    const err = new SessionCapReachedError();
+    expect(err.message).toBe("Maximum number of sessions reached");
+    expect(err.code).toBe("SESSION_CAP_REACHED");
+    expect(err).toBeInstanceOf(MechaError);
+  });
 });
 
 describe("toHttpStatus", () => {
@@ -109,6 +134,9 @@ describe("toHttpStatus", () => {
     expect(toHttpStatus(new ImageNotFoundError("x"))).toBe(500);
     expect(toHttpStatus(new TokenNotFoundError("x"))).toBe(404);
     expect(toHttpStatus(new ChatRequestFailedError("x", 500, "error"))).toBe(502);
+    expect(toHttpStatus(new SessionNotFoundError("s"))).toBe(404);
+    expect(toHttpStatus(new SessionBusyError("s"))).toBe(409);
+    expect(toHttpStatus(new SessionCapReachedError())).toBe(429);
   });
 
   it("maps ZodError to 400", () => {

@@ -19,6 +19,7 @@
   },
   "dependencies": {
     "@anthropic-ai/claude-agent-sdk": "^0.2.49",
+    "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
     "@modelcontextprotocol/sdk": "^1.26.0",
     "better-sqlite3": "^11.9.1",

@@ -23,6 +23,8 @@ export default defineConfig({
         "packages/runtime/src/main.ts",
         "packages/runtime/src/mcp/server.ts",
         "packages/runtime/src/agent/casa.ts",
+        "packages/runtime/src/agent/session-routes.ts",
+        "packages/runtime/src/agent/session-manager.ts",
       ],
       thresholds: {
         lines: 100,

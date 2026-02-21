@@ -5,23 +5,42 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLocalRuntime, type ChatModelAdapter } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 
-function createMechaAdapter(mechaId: string): ChatModelAdapter {
+function createMechaAdapter(mechaId: string, sessionId: string | null): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
-      const res = await fetch(`/api/mechas/${mechaId}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: m.content
-              .filter((c) => c.type === "text")
-              .map((c) => c.text)
-              .join(""),
-          })),
-        }),
-        signal: abortSignal,
-      });
+      let res: Response;
+
+      if (sessionId) {
+        // Session-based: send only the latest user message
+        const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+        const message = lastUserMsg?.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("") ?? "";
+
+        res = await fetch(`/api/mechas/${mechaId}/sessions/${sessionId}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+          signal: abortSignal,
+        });
+      } else {
+        // Stateless: send full message history
+        res = await fetch(`/api/mechas/${mechaId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: messages.map((m) => ({
+              role: m.role,
+              content: m.content
+                .filter((c) => c.type === "text")
+                .map((c) => c.text)
+                .join(""),
+            })),
+          }),
+          signal: abortSignal,
+        });
+      }
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -96,8 +115,13 @@ function extractText(event: Record<string, unknown>): ExtractResult {
   return null;
 }
 
-export function MechaChat({ mechaId }: { mechaId: string }) {
-  const adapter = useMemo(() => createMechaAdapter(mechaId), [mechaId]);
+interface MechaChatProps {
+  mechaId: string;
+  sessionId?: string | null;
+}
+
+export function MechaChat({ mechaId, sessionId = null }: MechaChatProps) {
+  const adapter = useMemo(() => createMechaAdapter(mechaId, sessionId), [mechaId, sessionId]);
   const runtime = useLocalRuntime(adapter);
 
   return (
