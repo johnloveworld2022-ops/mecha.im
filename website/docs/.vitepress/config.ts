@@ -28,6 +28,12 @@ export default defineConfig({
             { text: "Installation", link: "/guide/installation" },
           ],
         },
+        {
+          text: "Reference",
+          items: [
+            { text: "CLI Reference", link: "/guide/cli-reference" },
+          ],
+        },
       ],
     },
 
