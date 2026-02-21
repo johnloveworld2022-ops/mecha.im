@@ -28,17 +28,22 @@ export interface McpServerHandle {
   mcpServer: McpServer;
 }
 
+export interface CreateMcpServerOptions {
+  mechaId: string;
+  authToken: string;
+}
+
 /**
  * Create and configure an MCP server with default tools.
  */
-export function createMcpServer(mechaId: string): McpServerHandle {
+export function createMcpServer(opts: CreateMcpServerOptions): McpServerHandle {
   const mcpServer = new McpServer(
-    { name: `mecha-${mechaId}`, version: "0.1.0" },
+    { name: `mecha-${opts.mechaId}`, version: "0.1.0" },
     { capabilities: { tools: {} } },
   );
 
   // Register built-in tools
-  registerDefaultTools(mcpServer);
+  registerDefaultTools(mcpServer, opts.authToken);
 
   return { mcpServer };
 }
@@ -132,10 +137,79 @@ export function registerMcpRoutes(
   });
 }
 
+/** JSON endpoints — 30s timeout */
+async function agentFetch(
+  path: string,
+  authToken: string,
+  init?: RequestInit,
+): Promise<Response> {
+  return fetch(`http://127.0.0.1:3000${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+    signal: init?.signal ?? AbortSignal.timeout(30_000),
+  });
+}
+
+/** SSE streaming endpoints — 5min timeout, returns parsed text */
+async function agentStream(
+  path: string,
+  authToken: string,
+  init?: RequestInit,
+): Promise<string> {
+  const res = await fetch(`http://127.0.0.1:3000${path}`, {
+    ...init,
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${authToken}`,
+      ...(init?.headers as Record<string, string> | undefined),
+    },
+    signal: init?.signal ?? AbortSignal.timeout(300_000),
+  });
+  if (!res.ok) throw new Error(`Agent error: ${res.status} ${res.statusText}`);
+  return consumeSseText(res);
+}
+
+/**
+ * Consume an SSE response and extract text content from `data:` frames.
+ * Each SSE `data:` line contains a JSON message from the Claude agent SDK.
+ * We aggregate all `text` fields from content blocks.
+ */
+async function consumeSseText(res: Response): Promise<string> {
+  const raw = await res.text();
+  const lines = raw.split("\n");
+  const parts: string[] = [];
+  for (const line of lines) {
+    if (!line.startsWith("data: ")) continue;
+    const payload = line.slice(6).trim();
+    if (payload === "[DONE]" || !payload) continue;
+    try {
+      const msg = JSON.parse(payload);
+      // Claude Agent SDK streams content_block_delta with text
+      if (msg.type === "content_block_delta" && msg.delta?.text) {
+        parts.push(msg.delta.text);
+      } else if (msg.type === "message" && Array.isArray(msg.content)) {
+        for (const block of msg.content) {
+          if (block.type === "text" && block.text) parts.push(block.text);
+        }
+      } else if (typeof msg.text === "string") {
+        parts.push(msg.text);
+      }
+    } catch {
+      // Non-JSON data line — include as raw text
+      parts.push(payload);
+    }
+  }
+  return parts.length > 0 ? parts.join("") : raw;
+}
+
 /**
  * Register default MCP tools for a Mecha runtime.
  */
-function registerDefaultTools(mcpServer: McpServer): void {
+function registerDefaultTools(mcpServer: McpServer, authToken: string): void {
   mcpServer.tool("mecha_status", "Get the current status of this Mecha instance", {}, async () =>
     textContent(JSON.stringify({ status: "running", timestamp: new Date().toISOString() })),
   );
@@ -165,6 +239,97 @@ function registerDefaultTools(mcpServer: McpServer): void {
       catch { return textContent("Error: path traversal denied", true); }
       try { return textContent(await readFile(resolvedPath, "utf-8")); }
       catch { return textContent(`Error: cannot read ${filePath}`, true); }
+    },
+  );
+
+  // --- Agent interaction tools ---
+
+  mcpServer.tool(
+    "mecha_chat",
+    "Send a message to the Claude agent running in this Mecha",
+    { message: z.string().describe("The message to send to the agent") },
+    async ({ message }) => {
+      try {
+        const text = await agentStream("/api/chat", authToken, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        });
+        return textContent(text);
+      } catch (err) {
+        return textContent(`Chat request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      }
+    },
+  );
+
+  // --- Session management tools ---
+
+  mcpServer.tool(
+    "mecha_session_list",
+    "List all conversation sessions",
+    {},
+    async () => {
+      try {
+        const res = await agentFetch("/api/sessions", authToken);
+        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
+        return textContent(await res.text());
+      } catch (err) {
+        return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      }
+    },
+  );
+
+  mcpServer.tool(
+    "mecha_session_create",
+    "Create a new conversation session",
+    { title: z.string().optional().describe("Optional title for the session") },
+    async ({ title }) => {
+      try {
+        const res = await agentFetch("/api/sessions", authToken, {
+          method: "POST",
+          body: JSON.stringify({ title }),
+        });
+        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
+        return textContent(await res.text());
+      } catch (err) {
+        return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      }
+    },
+  );
+
+  mcpServer.tool(
+    "mecha_session_message",
+    "Send a message within a specific session",
+    {
+      sessionId: z.string().describe("The session ID to send the message to"),
+      message: z.string().describe("The message to send"),
+    },
+    async ({ sessionId, message }) => {
+      try {
+        const sid = encodeURIComponent(sessionId);
+        const text = await agentStream(`/api/sessions/${sid}/message`, authToken, {
+          method: "POST",
+          body: JSON.stringify({ message }),
+        });
+        return textContent(text);
+      } catch (err) {
+        return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      }
+    },
+  );
+
+  mcpServer.tool(
+    "mecha_session_delete",
+    "Delete a conversation session",
+    { sessionId: z.string().describe("The session ID to delete") },
+    async ({ sessionId }) => {
+      try {
+        const sid = encodeURIComponent(sessionId);
+        const res = await agentFetch(`/api/sessions/${sid}`, authToken, { method: "DELETE" });
+        if (!res.ok) return textContent(`Error: ${res.status} ${res.statusText}`, true);
+        return textContent(JSON.stringify({ deleted: true, sessionId }));
+      } catch (err) {
+        return textContent(`Request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      }
     },
   );
 }

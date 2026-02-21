@@ -33,9 +33,9 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   const getUptime = () => Math.floor((Date.now() - startTime) / 1000);
   const app = Fastify({ logger: opts.logger ?? false });
 
-  // --- auth middleware (skips /healthz) ---
+  // --- auth setup ---
+  const token = opts.authToken ?? generateToken();
   if (!opts.skipAuth) {
-    const token = opts.authToken ?? generateToken();
     if (!opts.authToken) app.addHook("onReady", () => app.log.info(`Auth token: ${token.slice(0, 8)}…`));
     app.addHook("preHandler", createAuthMiddleware(token, opts.otp));
   }
@@ -46,7 +46,7 @@ export function createServer(opts: ServerOptions): FastifyInstance {
     id: opts.mechaId, version: opts.version ?? "0.1.0", uptime: getUptime(), state: "running" as MechaState,
   }));
 
-  if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer(opts.mechaId));
+  if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer({ mechaId: opts.mechaId, authToken: token }));
   registerAgentRoutes(app, opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined);
 
   // --- session management ---
