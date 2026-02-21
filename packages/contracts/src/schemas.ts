@@ -116,3 +116,34 @@ export const McpEndpointResult = z.object({
   note:     z.string(),
 });
 export type McpEndpointResult = z.infer<typeof McpEndpointResult>;
+
+export const MechaTokenResult = z.object({
+  id:    z.string(),
+  token: z.string(),
+});
+export type MechaTokenResult = z.infer<typeof MechaTokenResult>;
+
+export const MechaEnvResult = z.object({
+  id:  z.string(),
+  env: z.array(z.object({ key: z.string(), value: z.string() })),
+});
+export type MechaEnvResult = z.infer<typeof MechaEnvResult>;
+
+export const MechaPruneResult = z.object({
+  removedContainers: z.array(z.string()),
+  removedVolumes:    z.array(z.string()),
+});
+export type MechaPruneResult = z.infer<typeof MechaPruneResult>;
+
+export const MechaUpdateResult = z.object({
+  id:            z.string(),
+  image:         z.string(),
+  previousImage: z.string(),
+});
+export type MechaUpdateResult = z.infer<typeof MechaUpdateResult>;
+
+export const MechaChatInput = z.object({
+  id:      z.string().min(1),
+  message: z.string().min(1),
+});
+export type MechaChatInput = z.infer<typeof MechaChatInput>;

@@ -19,7 +19,6 @@ import {
 import {
   PathNotFoundError,
   PathNotDirectoryError,
-  InvalidPortError,
   InvalidPermissionModeError,
   ContainerStartError,
   NoPortBindingError,
@@ -133,12 +132,12 @@ describe("mechaUp", () => {
     rmSync(testDir, { recursive: true, force: true });
   });
 
-  it("throws InvalidPortError for port below 1024", async () => {
-    await expect(mechaUp(client, { projectPath: tmpdir(), port: 80 })).rejects.toThrow(InvalidPortError);
+  it("throws for port below 1024 (schema validation)", async () => {
+    await expect(mechaUp(client, { projectPath: tmpdir(), port: 80 })).rejects.toThrow();
   });
 
-  it("throws InvalidPermissionModeError for invalid mode", async () => {
-    await expect(mechaUp(client, { projectPath: tmpdir(), permissionMode: "yolo" as any })).rejects.toThrow(InvalidPermissionModeError);
+  it("throws for invalid permission mode (schema validation)", async () => {
+    await expect(mechaUp(client, { projectPath: tmpdir(), permissionMode: "yolo" as any })).rejects.toThrow();
   });
 
   it("throws NoPortBindingError when dynamic port is unavailable", async () => {
@@ -159,6 +158,20 @@ describe("mechaUp", () => {
 
     const opts = mockCreateContainer.mock.calls[0][1];
     expect(opts.env).toContain("MY_VAR=hello");
+  });
+
+  it("rejects blocked env keys via schema validation", async () => {
+    await expect(
+      mechaUp(client, { projectPath: tmpdir(), env: ["MECHA_AUTH_TOKEN=hacked"] }),
+    ).rejects.toThrow();
+    expect(mockCreateContainer).not.toHaveBeenCalled();
+  });
+
+  it("rejects malformed env entries via schema validation", async () => {
+    await expect(
+      mechaUp(client, { projectPath: tmpdir(), env: ["no-equals"] } as any),
+    ).rejects.toThrow();
+    expect(mockCreateContainer).not.toHaveBeenCalled();
   });
 });
 

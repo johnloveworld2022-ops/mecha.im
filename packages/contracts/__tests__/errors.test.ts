@@ -16,6 +16,8 @@ import {
   PathNotDirectoryError,
   NoPortBindingError,
   ConfigureNoFieldsError,
+  TokenNotFoundError,
+  ChatRequestFailedError,
   toHttpStatus,
   toExitCode,
   toUserMessage,
@@ -75,6 +77,20 @@ describe("error classes", () => {
     expect(err.message).toBe("At least one field required: claudeToken, anthropicApiKey, otp, permissionMode");
     expect(err.code).toBe("CONFIGURE_NO_FIELDS");
   });
+
+  it("TokenNotFoundError has correct message and code", () => {
+    const err = new TokenNotFoundError("mx-foo");
+    expect(err.message).toBe("No auth token found for mecha: mx-foo");
+    expect(err.code).toBe("TOKEN_NOT_FOUND");
+    expect(err).toBeInstanceOf(MechaError);
+  });
+
+  it("ChatRequestFailedError has correct message and code", () => {
+    const err = new ChatRequestFailedError("mx-foo", 502, "Bad Gateway");
+    expect(err.message).toBe("Chat failed for mecha mx-foo: 502 Bad Gateway");
+    expect(err.code).toBe("CHAT_REQUEST_FAILED");
+    expect(err).toBeInstanceOf(MechaError);
+  });
 });
 
 describe("toHttpStatus", () => {
@@ -91,6 +107,8 @@ describe("toHttpStatus", () => {
     expect(toHttpStatus(new NoPortBindingError("x"))).toBe(500);
     expect(toHttpStatus(new InvalidPathError("/x"))).toBe(400);
     expect(toHttpStatus(new ImageNotFoundError("x"))).toBe(500);
+    expect(toHttpStatus(new TokenNotFoundError("x"))).toBe(404);
+    expect(toHttpStatus(new ChatRequestFailedError("x", 500, "error"))).toBe(502);
   });
 
   it("maps ZodError to 400", () => {

@@ -34,6 +34,16 @@ export class ConfigureNoFieldsError extends MechaError {
   constructor() { super("At least one field required: claudeToken, anthropicApiKey, otp, permissionMode", "CONFIGURE_NO_FIELDS"); }
 }
 
+export class TokenNotFoundError extends MechaError {
+  constructor(id: string) { super(`No auth token found for mecha: ${id}`, "TOKEN_NOT_FOUND"); }
+}
+
+export class ChatRequestFailedError extends MechaError {
+  constructor(id: string, status: number, statusText: string) {
+    super(`Chat failed for mecha ${id}: ${status} ${statusText}`, "CHAT_REQUEST_FAILED");
+  }
+}
+
 // --- Error mapping helpers ---
 
 const HTTP_STATUS_MAP: Record<string, number> = {
@@ -47,6 +57,8 @@ const HTTP_STATUS_MAP: Record<string, number> = {
   CONTAINER_START_FAILED: 500,
   DOCKER_NOT_AVAILABLE: 503,
   NO_PORT_BINDING: 500,
+  TOKEN_NOT_FOUND: 404,
+  CHAT_REQUEST_FAILED: 502,
   INVALID_PATH: 400,
   IMAGE_NOT_FOUND: 500,
 };

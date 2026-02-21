@@ -17,6 +17,7 @@ import {
   getContainerLogs,
   execInContainer,
   ping,
+  pullImage,
 } from "@mecha/docker";
 import {
   computeMechaId,
@@ -26,18 +27,19 @@ import {
   DEFAULTS,
   LABELS,
   MOUNT_PATHS,
-  ContainerNotFoundError,
 } from "@mecha/core";
 import type { MechaId } from "@mecha/core";
 import {
   PathNotFoundError,
   PathNotDirectoryError,
-  InvalidPortError,
   InvalidPermissionModeError,
   ContainerStartError,
   NoPortBindingError,
   ConfigureNoFieldsError,
+  TokenNotFoundError,
+  ChatRequestFailedError,
 } from "@mecha/contracts";
+import { MechaUpInput } from "@mecha/contracts";
 import type {
   MechaUpInputType,
   MechaUpResultType,
@@ -50,6 +52,11 @@ import type {
   DoctorResultType,
   UiUrlResultType,
   McpEndpointResultType,
+  MechaTokenResultType,
+  MechaEnvResultType,
+  MechaPruneResultType,
+  MechaUpdateResultType,
+  MechaChatInputType,
 } from "@mecha/contracts";
 import { PERMISSION_MODES } from "@mecha/contracts";
 
@@ -62,13 +69,6 @@ async function validateProjectPath(projectPath: string): Promise<void> {
     throw new PathNotFoundError(projectPath);
   }
   if (!st.isDirectory()) throw new PathNotDirectoryError(projectPath);
-}
-
-// --- Helper: validate port range ---
-function validatePort(port: number | undefined): void {
-  if (port !== undefined && (!Number.isInteger(port) || port < 1024 || port > 65535)) {
-    throw new InvalidPortError(port);
-  }
 }
 
 // --- Helper: validate permission mode ---
@@ -158,9 +158,8 @@ export async function mechaUp(
   client: DockerClient,
   input: MechaUpInputType,
 ): Promise<MechaUpResultType> {
+  MechaUpInput.parse(input);
   await validateProjectPath(input.projectPath);
-  validatePort(input.port);
-  validatePermissionMode(input.permissionMode);
 
   const id = computeMechaId(input.projectPath);
   const cName = containerName(id);
@@ -395,5 +394,110 @@ export async function resolveMcpEndpoint(client: DockerClient, id: string): Prom
   };
 }
 
-// --- 15. loadDotEnvFiles (re-exported from env.ts) ---
+// --- 15. mechaToken ---
+export async function mechaToken(
+  client: DockerClient,
+  id: string,
+): Promise<MechaTokenResultType> {
+  const info = await inspectContainer(client, containerName(id as MechaId));
+  const entry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
+  if (!entry) throw new TokenNotFoundError(id);
+  return { id, token: entry.split("=").slice(1).join("=") };
+}
+
+// --- 16. mechaInspect ---
+export async function mechaInspect(
+  client: DockerClient,
+  id: string,
+): Promise<Record<string, unknown>> {
+  return inspectContainer(client, containerName(id as MechaId)) as unknown as Record<string, unknown>;
+}
+
+// --- 17. mechaEnv ---
+export async function mechaEnv(
+  client: DockerClient,
+  id: string,
+): Promise<MechaEnvResultType> {
+  const info = await inspectContainer(client, containerName(id as MechaId));
+  const env = (info.Config?.Env ?? []).map((e: string) => {
+    const eq = e.indexOf("=");
+    return eq > 0 ? { key: e.slice(0, eq), value: e.slice(eq + 1) } : { key: e, value: "" };
+  });
+  return { id, env };
+}
+
+// --- 18. mechaPrune ---
+export async function mechaPrune(
+  client: DockerClient,
+  opts: { volumes?: boolean },
+): Promise<MechaPruneResultType> {
+  const containers = await listMechaContainers(client);
+  const PRUNABLE_STATES = new Set(["exited", "dead", "created"]);
+  const stopped = containers.filter((c) => PRUNABLE_STATES.has(c.State));
+  const removedContainers: string[] = [];
+  const removedVolumes: string[] = [];
+  for (const c of stopped) {
+    const name = c.Names[0]?.replace(/^\//, "");
+    if (!name) continue;
+    try {
+      await removeContainer(client, name, true);
+      removedContainers.push(name);
+    } catch { /* best effort */ }
+    if (opts.volumes) {
+      const id = c.Labels[LABELS.MECHA_ID] ?? "";
+      if (id) {
+        try {
+          const vName = volumeName(id as MechaId);
+          await removeVolume(client, vName);
+          removedVolumes.push(vName);
+        } catch { /* best effort */ }
+      }
+    }
+  }
+  return { removedContainers, removedVolumes };
+}
+
+// --- 19. mechaUpdate ---
+export async function mechaUpdate(
+  client: DockerClient,
+  input: { id: string; noPull?: boolean },
+): Promise<MechaUpdateResultType> {
+  const mechaId = input.id as MechaId;
+  const cName = containerName(mechaId);
+  const info = await inspectContainer(client, cName);
+  const originalOpts = extractContainerOpts(info, cName, mechaId);
+  const previousImage = originalOpts.image;
+  if (!input.noPull) await pullImage(client, DEFAULTS.IMAGE);
+  const newOpts = { ...originalOpts, image: DEFAULTS.IMAGE };
+  await stopTolerant(client, cName);
+  await recreateWithRollback(client, cName, newOpts, originalOpts);
+  return { id: input.id, image: DEFAULTS.IMAGE, previousImage };
+}
+
+// --- 20. mechaChat ---
+export async function mechaChat(
+  client: DockerClient,
+  input: MechaChatInputType,
+): Promise<Response> {
+  const cName = containerName(input.id as MechaId);
+  const port = await getContainerPort(client, cName);
+  if (!port) throw new NoPortBindingError(input.id);
+  const info = await inspectContainer(client, cName);
+  const tokenEntry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
+  if (!tokenEntry) throw new TokenNotFoundError(input.id);
+  const token = tokenEntry.split("=").slice(1).join("=");
+  const res = await fetch(`http://127.0.0.1:${port}/api/chat`, {
+    method: "POST",
+    headers: {
+      "Content-Type": "application/json",
+      Authorization: `Bearer ${token}`,
+    },
+    body: JSON.stringify({ message: input.message }),
+    signal: AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw new ChatRequestFailedError(input.id, res.status, res.statusText);
+  return res;
+}
+
+// --- 21. loadDotEnvFiles (re-exported from env.ts) ---
 export { loadDotEnvFiles } from "./env.js";

@@ -1,0 +1,198 @@
+import { describe, it, expect, vi, beforeEach } from "vitest";
+import { Command } from "commander";
+import type { CommandDeps } from "../../src/types.js";
+import type { Formatter } from "../../src/output/formatter.js";
+import { registerChatCommand } from "../../src/commands/chat.js";
+
+const mockMechaChat = vi.fn();
+
+vi.mock("@mecha/service", () => ({
+  mechaChat: (...args: unknown[]) => mockMechaChat(...args),
+}));
+
+function createMockFormatter(): Formatter {
+  return { info: vi.fn(), error: vi.fn(), success: vi.fn(), json: vi.fn(), table: vi.fn() };
+}
+
+function createMockSSEResponse(lines: string[]): Response {
+  const chunks = lines.map((l) => new TextEncoder().encode(l + "\n"));
+  let idx = 0;
+  const stream = new ReadableStream<Uint8Array>({
+    pull(controller) {
+      if (idx < chunks.length) {
+        controller.enqueue(chunks[idx]!);
+        idx++;
+      } else {
+        controller.close();
+      }
+    },
+  });
+  return { ok: true, body: stream } as unknown as Response;
+}
+
+describe("mecha chat", () => {
+  let formatter: Formatter;
+  let deps: CommandDeps;
+  let writeSpy: ReturnType<typeof vi.spyOn>;
+
+  beforeEach(() => {
+    formatter = createMockFormatter();
+    deps = { dockerClient: { docker: {} } as any, formatter };
+    process.exitCode = undefined;
+    vi.clearAllMocks();
+    writeSpy = vi.spyOn(process.stdout, "write").mockReturnValue(true);
+  });
+
+  it("streams SSE text to stdout", async () => {
+    const res = createMockSSEResponse([
+      'data: {"text":"Hello"}',
+      'data: {"text":" world"}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hi there"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("Hello");
+    expect(output).toContain(" world");
+    writeSpy.mockRestore();
+  });
+
+  it("handles content field in SSE data", async () => {
+    const res = createMockSSEResponse([
+      'data: {"content":"Hi"}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("Hi");
+    writeSpy.mockRestore();
+  });
+
+  it("handles delta.text field in SSE data", async () => {
+    const res = createMockSSEResponse([
+      'data: {"delta":{"text":"delta-text"}}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("delta-text");
+    writeSpy.mockRestore();
+  });
+
+  it("handles empty response body", async () => {
+    const res = { ok: true, body: null } as unknown as Response;
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    expect(formatter.info).toHaveBeenCalledWith("(empty response)");
+    writeSpy.mockRestore();
+  });
+
+  it("handles non-JSON SSE lines gracefully", async () => {
+    const res = createMockSSEResponse([
+      "data: not-json",
+      'data: {"text":"ok"}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("ok");
+    writeSpy.mockRestore();
+  });
+
+  it("skips SSE data with no text fields", async () => {
+    const res = createMockSSEResponse([
+      'data: {"id":"msg-1"}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    // Only the trailing newline, no text content
+    const textWrites = writeSpy.mock.calls.filter((c) => String(c[0]) !== "\n");
+    expect(textWrites).toHaveLength(0);
+    writeSpy.mockRestore();
+  });
+
+  it("ignores non-SSE lines", async () => {
+    const res = createMockSSEResponse([
+      ": keep-alive",
+      "",
+      'data: {"text":"ok"}',
+      "data: [DONE]",
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("ok");
+    writeSpy.mockRestore();
+  });
+
+  it("writes trailing newline when stream ends without [DONE]", async () => {
+    const res = createMockSSEResponse([
+      'data: {"text":"partial"}',
+    ]);
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("partial");
+    expect(output).toContain("\n");
+    writeSpy.mockRestore();
+  });
+
+  it("flushes remaining buffer when stream ends without trailing newline", async () => {
+    // Simulate a stream that ends mid-line without newline
+    const chunk = new TextEncoder().encode('data: {"text":"buffered"}');
+    const stream = new ReadableStream<Uint8Array>({
+      pull(controller) {
+        controller.enqueue(chunk);
+        controller.close();
+      },
+    });
+    const res = { ok: true, body: stream } as unknown as Response;
+    mockMechaChat.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("buffered");
+    writeSpy.mockRestore();
+  });
+
+  it("reports error on failure", async () => {
+    mockMechaChat.mockRejectedValueOnce(new Error("connection failed"));
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("connection failed"));
+    expect(process.exitCode).toBe(1);
+    writeSpy.mockRestore();
+  });
+});

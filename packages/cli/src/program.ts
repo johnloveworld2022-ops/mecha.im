@@ -1,3 +1,4 @@
+import { createRequire } from "node:module";
 import { Command } from "commander";
 import { createDockerClient } from "@mecha/docker";
 import { createFormatter } from "./output/formatter.js";
@@ -17,6 +18,16 @@ import { registerUiCommand } from "./commands/ui.js";
 import { registerMcpCommand } from "./commands/mcp.js";
 import { registerConfigureCommand } from "./commands/configure.js";
 import { registerDashboardCommand } from "./commands/dashboard.js";
+import { registerTokenCommand } from "./commands/token.js";
+import { registerInspectCommand } from "./commands/inspect.js";
+import { registerEnvCommand } from "./commands/env.js";
+import { registerPruneCommand } from "./commands/prune.js";
+import { registerUpdateCommand } from "./commands/update.js";
+import { registerChatCommand } from "./commands/chat.js";
+import { registerCompletionsCommand } from "./commands/completions.js";
+
+const require = createRequire(import.meta.url);
+const { version } = require("../package.json") as { version: string };
 
 export function createProgram(depsOverride?: CommandDeps): Command {
   const program = new Command();
@@ -24,7 +35,7 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   program
     .name("mecha")
     .description("Local-first multi-agent runtime CLI")
-    .version("0.1.0")
+    .version(version)
     .option("--json", "Output results as JSON")
     .option("-q, --quiet", "Suppress non-essential output")
     .option("-v, --verbose", "Enable verbose output")
@@ -60,6 +71,13 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   registerMcpCommand(program, deps);
   registerConfigureCommand(program, deps);
   registerDashboardCommand(program, deps);
+  registerTokenCommand(program, deps);
+  registerInspectCommand(program, deps);
+  registerEnvCommand(program, deps);
+  registerPruneCommand(program, deps);
+  registerUpdateCommand(program, deps);
+  registerChatCommand(program, deps);
+  registerCompletionsCommand(program, deps);
 
   return program;
 }

@@ -13,6 +13,11 @@ export {
   DoctorResult,
   UiUrlResult,
   McpEndpointResult,
+  MechaTokenResult,
+  MechaEnvResult,
+  MechaPruneResult,
+  MechaUpdateResult,
+  MechaChatInput,
 } from "./schemas.js";
 
 export type {
@@ -27,6 +32,11 @@ export type {
   DoctorResult as DoctorResultType,
   UiUrlResult as UiUrlResultType,
   McpEndpointResult as McpEndpointResultType,
+  MechaTokenResult as MechaTokenResultType,
+  MechaEnvResult as MechaEnvResultType,
+  MechaPruneResult as MechaPruneResultType,
+  MechaUpdateResult as MechaUpdateResultType,
+  MechaChatInput as MechaChatInputType,
 } from "./schemas.js";
 
 export {
@@ -37,6 +47,8 @@ export {
   PathNotDirectoryError,
   NoPortBindingError,
   ConfigureNoFieldsError,
+  TokenNotFoundError,
+  ChatRequestFailedError,
   toHttpStatus,
   toExitCode,
   toUserMessage,

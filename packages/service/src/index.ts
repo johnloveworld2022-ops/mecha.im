@@ -13,5 +13,11 @@ export {
   mechaInit,
   resolveUiUrl,
   resolveMcpEndpoint,
+  mechaToken,
+  mechaInspect,
+  mechaEnv,
+  mechaPrune,
+  mechaUpdate,
+  mechaChat,
   loadDotEnvFiles,
 } from "./service.js";
