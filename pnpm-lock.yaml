@@ -159,6 +159,9 @@ importers:
       '@anthropic-ai/claude-agent-sdk':
         specifier: ^0.2.49
         version: 0.2.49(zod@4.3.6)
+      '@mecha/contracts':
+        specifier: workspace:*
+        version: link:../contracts
       '@mecha/core':
         specifier: workspace:*
         version: link:../core

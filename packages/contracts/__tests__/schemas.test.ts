@@ -14,6 +14,14 @@ import {
   DoctorResult,
   UiUrlResult,
   McpEndpointResult,
+  SessionConfig,
+  SessionCreateInput,
+  SessionMessageInput,
+  SessionGetInput,
+  SessionDeleteInput,
+  SessionInterruptInput,
+  SessionConfigUpdateInput,
+  SessionListInput,
 } from "../src/schemas.js";
 
 describe("PERMISSION_MODES", () => {
@@ -268,5 +276,173 @@ describe("McpEndpointResult", () => {
     const result = McpEndpointResult.parse({ endpoint: "http://127.0.0.1:7700/mcp", note: "use bearer token" });
     expect(result.endpoint).toBe("http://127.0.0.1:7700/mcp");
     expect(result.note).toBe("use bearer token");
+  });
+});
+
+describe("SessionConfig", () => {
+  it("parses valid config with all fields", () => {
+    const result = SessionConfig.parse({
+      maxTurns: 10,
+      systemPrompt: "You are helpful",
+      permissionMode: "plan",
+      model: "claude-sonnet-4-20250514",
+      maxBudgetUsd: 5.0,
+    });
+    expect(result.maxTurns).toBe(10);
+    expect(result.systemPrompt).toBe("You are helpful");
+    expect(result.permissionMode).toBe("plan");
+    expect(result.model).toBe("claude-sonnet-4-20250514");
+    expect(result.maxBudgetUsd).toBe(5.0);
+  });
+
+  it("parses valid empty object (all fields optional)", () => {
+    const result = SessionConfig.parse({});
+    expect(result.maxTurns).toBeUndefined();
+    expect(result.systemPrompt).toBeUndefined();
+    expect(result.permissionMode).toBeUndefined();
+    expect(result.model).toBeUndefined();
+    expect(result.maxBudgetUsd).toBeUndefined();
+  });
+
+  it("rejects negative maxTurns", () => {
+    expect(() => SessionConfig.parse({ maxTurns: -1 })).toThrow();
+  });
+
+  it("rejects zero maxTurns", () => {
+    expect(() => SessionConfig.parse({ maxTurns: 0 })).toThrow();
+  });
+
+  it("rejects negative maxBudgetUsd", () => {
+    expect(() => SessionConfig.parse({ maxBudgetUsd: -5 })).toThrow();
+  });
+
+  it("rejects invalid permissionMode", () => {
+    expect(() => SessionConfig.parse({ permissionMode: "dangerous" })).toThrow();
+  });
+});
+
+describe("SessionCreateInput", () => {
+  it("parses valid input with id only", () => {
+    const result = SessionCreateInput.parse({ id: "mx-foo" });
+    expect(result.id).toBe("mx-foo");
+    expect(result.title).toBeUndefined();
+    expect(result.config).toBeUndefined();
+  });
+
+  it("parses valid input with title and config", () => {
+    const result = SessionCreateInput.parse({
+      id: "mx-foo",
+      title: "My session",
+      config: { maxTurns: 5, model: "claude-sonnet-4-20250514" },
+    });
+    expect(result.title).toBe("My session");
+    expect(result.config?.maxTurns).toBe(5);
+    expect(result.config?.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionCreateInput.parse({ id: "" })).toThrow();
+  });
+});
+
+describe("SessionMessageInput", () => {
+  it("parses valid input", () => {
+    const result = SessionMessageInput.parse({ id: "mx-foo", sessionId: "sess-1", message: "hello" });
+    expect(result.id).toBe("mx-foo");
+    expect(result.sessionId).toBe("sess-1");
+    expect(result.message).toBe("hello");
+  });
+
+  it("rejects empty message", () => {
+    expect(() => SessionMessageInput.parse({ id: "mx-foo", sessionId: "sess-1", message: "" })).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => SessionMessageInput.parse({ id: "mx-foo", sessionId: "", message: "hello" })).toThrow();
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionMessageInput.parse({ id: "", sessionId: "sess-1", message: "hello" })).toThrow();
+  });
+});
+
+describe("SessionGetInput", () => {
+  it("parses valid input", () => {
+    const result = SessionGetInput.parse({ id: "mx-foo", sessionId: "sess-1" });
+    expect(result.id).toBe("mx-foo");
+    expect(result.sessionId).toBe("sess-1");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionGetInput.parse({ id: "", sessionId: "sess-1" })).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => SessionGetInput.parse({ id: "mx-foo", sessionId: "" })).toThrow();
+  });
+});
+
+describe("SessionDeleteInput", () => {
+  it("parses valid input", () => {
+    const result = SessionDeleteInput.parse({ id: "mx-foo", sessionId: "sess-1" });
+    expect(result.id).toBe("mx-foo");
+    expect(result.sessionId).toBe("sess-1");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionDeleteInput.parse({ id: "", sessionId: "sess-1" })).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => SessionDeleteInput.parse({ id: "mx-foo", sessionId: "" })).toThrow();
+  });
+});
+
+describe("SessionInterruptInput", () => {
+  it("parses valid input", () => {
+    const result = SessionInterruptInput.parse({ id: "mx-foo", sessionId: "sess-1" });
+    expect(result.id).toBe("mx-foo");
+    expect(result.sessionId).toBe("sess-1");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionInterruptInput.parse({ id: "", sessionId: "sess-1" })).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => SessionInterruptInput.parse({ id: "mx-foo", sessionId: "" })).toThrow();
+  });
+});
+
+describe("SessionConfigUpdateInput", () => {
+  it("parses valid input", () => {
+    const result = SessionConfigUpdateInput.parse({
+      id: "mx-foo",
+      sessionId: "sess-1",
+      config: { maxTurns: 20, permissionMode: "full-auto" },
+    });
+    expect(result.id).toBe("mx-foo");
+    expect(result.sessionId).toBe("sess-1");
+    expect(result.config.maxTurns).toBe(20);
+    expect(result.config.permissionMode).toBe("full-auto");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionConfigUpdateInput.parse({ id: "", sessionId: "sess-1", config: {} })).toThrow();
+  });
+
+  it("rejects empty sessionId", () => {
+    expect(() => SessionConfigUpdateInput.parse({ id: "mx-foo", sessionId: "", config: {} })).toThrow();
+  });
+});
+
+describe("SessionListInput", () => {
+  it("parses valid input", () => {
+    const result = SessionListInput.parse({ id: "mx-foo" });
+    expect(result.id).toBe("mx-foo");
+  });
+
+  it("rejects empty id", () => {
+    expect(() => SessionListInput.parse({ id: "" })).toThrow();
   });
 });

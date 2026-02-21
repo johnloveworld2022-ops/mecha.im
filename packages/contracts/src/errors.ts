@@ -44,6 +44,18 @@ export class ChatRequestFailedError extends MechaError {
   }
 }
 
+export class SessionNotFoundError extends MechaError {
+  constructor(sessionId: string) { super(`Session not found: ${sessionId}`, "SESSION_NOT_FOUND"); }
+}
+
+export class SessionBusyError extends MechaError {
+  constructor(sessionId: string) { super(`Session is busy: ${sessionId}`, "SESSION_BUSY"); }
+}
+
+export class SessionCapReachedError extends MechaError {
+  constructor() { super("Maximum number of sessions reached", "SESSION_CAP_REACHED"); }
+}
+
 // --- Error mapping helpers ---
 
 const HTTP_STATUS_MAP: Record<string, number> = {
@@ -61,6 +73,9 @@ const HTTP_STATUS_MAP: Record<string, number> = {
   CHAT_REQUEST_FAILED: 502,
   INVALID_PATH: 400,
   IMAGE_NOT_FOUND: 500,
+  SESSION_NOT_FOUND: 404,
+  SESSION_BUSY: 409,
+  SESSION_CAP_REACHED: 429,
 };
 
 export function toHttpStatus(err: unknown): number {

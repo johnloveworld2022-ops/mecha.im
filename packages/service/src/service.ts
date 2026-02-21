@@ -38,6 +38,9 @@ import {
   ConfigureNoFieldsError,
   TokenNotFoundError,
   ChatRequestFailedError,
+  SessionNotFoundError,
+  SessionBusyError,
+  SessionCapReachedError,
 } from "@mecha/contracts";
 import { MechaUpInput } from "@mecha/contracts";
 import type {
@@ -57,6 +60,13 @@ import type {
   MechaPruneResultType,
   MechaUpdateResultType,
   MechaChatInputType,
+  SessionCreateInputType,
+  SessionListInputType,
+  SessionGetInputType,
+  SessionDeleteInputType,
+  SessionMessageInputType,
+  SessionInterruptInputType,
+  SessionConfigUpdateInputType,
 } from "@mecha/contracts";
 import { PERMISSION_MODES } from "@mecha/contracts";
 
@@ -475,18 +485,14 @@ export async function mechaUpdate(
 }
 
 // --- 20. mechaChat ---
+// Uses getRuntimeAccess directly (not runtimeFetch) because chat errors
+// throw ChatRequestFailedError, not the session-specific mapSessionError.
 export async function mechaChat(
   client: DockerClient,
   input: MechaChatInputType,
 ): Promise<Response> {
-  const cName = containerName(input.id as MechaId);
-  const port = await getContainerPort(client, cName);
-  if (!port) throw new NoPortBindingError(input.id);
-  const info = await inspectContainer(client, cName);
-  const tokenEntry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
-  if (!tokenEntry) throw new TokenNotFoundError(input.id);
-  const token = tokenEntry.split("=").slice(1).join("=");
-  const res = await fetch(`http://127.0.0.1:${port}/api/chat`, {
+  const { url, token } = await getRuntimeAccess(client, input.id);
+  const res = await fetch(`${url}/api/chat`, {
     method: "POST",
     headers: {
       "Content-Type": "application/json",
@@ -501,3 +507,134 @@ export async function mechaChat(
 
 // --- 21. loadDotEnvFiles (re-exported from env.ts) ---
 export { loadDotEnvFiles } from "./env.js";
+
+// --- Helper: get runtime URL and auth token ---
+async function getRuntimeAccess(client: DockerClient, mechaId: string): Promise<{ url: string; token: string }> {
+  const cName = containerName(mechaId as MechaId);
+  const port = await getContainerPort(client, cName);
+  if (!port) throw new NoPortBindingError(mechaId);
+  const info = await inspectContainer(client, cName);
+  const tokenEntry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
+  if (!tokenEntry) throw new TokenNotFoundError(mechaId);
+  const token = tokenEntry.split("=").slice(1).join("=");
+  return { url: `http://127.0.0.1:${port}`, token };
+}
+
+/** Map runtime session error status codes to domain errors */
+function mapSessionError(status: number, body: string, sessionId?: string): Error {
+  if (status === 404) return new SessionNotFoundError(sessionId ?? "unknown");
+  if (status === 409) return new SessionBusyError(sessionId ?? "unknown");
+  if (status === 429) return new SessionCapReachedError();
+  if (status === 400) return new Error(`Bad request: ${body}`);
+  if (status === 503) return new Error(`Service unavailable: ${body}`);
+  return new Error(`Session request failed: ${status} ${body}`);
+}
+
+/** Fetch from a mecha's runtime API with auth, error mapping, and default timeout.
+ *  Pass `signal: undefined` explicitly to disable the default 30s timeout (for streaming). */
+async function runtimeFetch(
+  client: DockerClient,
+  mechaId: string,
+  path: string,
+  init?: RequestInit & { sessionId?: string },
+): Promise<Response> {
+  const { url, token } = await getRuntimeAccess(client, mechaId);
+  const { sessionId, ...fetchInit } = init ?? {};
+  // Only apply default timeout if caller did not explicitly provide a signal key
+  const hasExplicitSignal = init !== undefined && "signal" in init;
+  // Use Headers API to guarantee auth cannot be overridden (case-insensitive dedup)
+  const headers = new Headers(fetchInit.headers as Record<string, string>);
+  headers.set("Authorization", `Bearer ${token}`);
+  const res = await fetch(`${url}${path}`, {
+    ...fetchInit,
+    headers,
+    signal: hasExplicitSignal ? fetchInit.signal : AbortSignal.timeout(30_000),
+  });
+  if (!res.ok) throw mapSessionError(res.status, await res.text(), sessionId);
+  return res;
+}
+
+// --- 22. mechaSessionCreate ---
+export async function mechaSessionCreate(
+  client: DockerClient,
+  input: SessionCreateInputType,
+): Promise<unknown> {
+  const res = await runtimeFetch(client, input.id, "/api/sessions", {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: input.title, config: input.config }),
+  });
+  return res.json();
+}
+
+// --- 23. mechaSessionList ---
+export async function mechaSessionList(
+  client: DockerClient,
+  input: SessionListInputType,
+): Promise<unknown> {
+  const res = await runtimeFetch(client, input.id, "/api/sessions");
+  return res.json();
+}
+
+// --- 24. mechaSessionGet ---
+export async function mechaSessionGet(
+  client: DockerClient,
+  input: SessionGetInputType,
+): Promise<unknown> {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await runtimeFetch(client, input.id, `/api/sessions/${sid}`, { sessionId: input.sessionId });
+  return res.json();
+}
+
+// --- 25. mechaSessionDelete ---
+export async function mechaSessionDelete(
+  client: DockerClient,
+  input: SessionDeleteInputType,
+): Promise<void> {
+  const sid = encodeURIComponent(input.sessionId);
+  await runtimeFetch(client, input.id, `/api/sessions/${sid}`, { method: "DELETE", sessionId: input.sessionId });
+}
+
+// --- 26. mechaSessionMessage ---
+export async function mechaSessionMessage(
+  client: DockerClient,
+  input: SessionMessageInputType,
+  signal?: AbortSignal,
+): Promise<Response> {
+  const sid = encodeURIComponent(input.sessionId);
+  return runtimeFetch(client, input.id, `/api/sessions/${sid}/message`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ message: input.message }),
+    signal,
+    sessionId: input.sessionId,
+  });
+}
+
+// --- 27. mechaSessionInterrupt ---
+export async function mechaSessionInterrupt(
+  client: DockerClient,
+  input: SessionInterruptInputType,
+): Promise<{ interrupted: boolean }> {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await runtimeFetch(client, input.id, `/api/sessions/${sid}/interrupt`, {
+    method: "POST",
+    sessionId: input.sessionId,
+  });
+  return res.json() as Promise<{ interrupted: boolean }>;
+}
+
+// --- 28. mechaSessionConfigUpdate ---
+export async function mechaSessionConfigUpdate(
+  client: DockerClient,
+  input: SessionConfigUpdateInputType,
+): Promise<unknown> {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await runtimeFetch(client, input.id, `/api/sessions/${sid}/config`, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(input.config),
+    sessionId: input.sessionId,
+  });
+  return res.json();
+}

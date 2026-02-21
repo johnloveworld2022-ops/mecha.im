@@ -1,7 +1,10 @@
 import Fastify, { type FastifyInstance } from "fastify";
 import type { MechaId, MechaState } from "@mecha/core";
+import type Database from "better-sqlite3";
 import { createMcpServer, registerMcpRoutes } from "./mcp/server.js";
 import { registerAgentRoutes, type AgentOptions } from "./agent/casa.js";
+import { registerSessionRoutes } from "./agent/session-routes.js";
+import { SessionManager } from "./agent/session-manager.js";
 import { generateToken, createAuthMiddleware } from "./auth/token.js";
 
 export interface ServerOptions {
@@ -21,6 +24,8 @@ export interface ServerOptions {
   otp?: string;
   /** Skip auth middleware (for testing) */
   skipAuth?: boolean;
+  /** SQLite database for session persistence */
+  db?: Database.Database;
 }
 
 export function createServer(opts: ServerOptions): FastifyInstance {
@@ -43,6 +48,19 @@ export function createServer(opts: ServerOptions): FastifyInstance {
 
   if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer(opts.mechaId));
   registerAgentRoutes(app, opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined);
+
+  // --- session management ---
+  const agentOpts: AgentOptions | undefined = opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined;
+  if (opts.db && agentOpts) {
+    const sessionManager = new SessionManager(opts.db, agentOpts);
+    sessionManager.resetBusySessions();
+    registerSessionRoutes(app, sessionManager);
+    sessionManager.startCleanup();
+    app.addHook("onClose", async () => sessionManager.shutdown());
+  } else {
+    // Register routes that return 503 when sessions are unavailable
+    registerSessionRoutes(app, undefined);
+  }
 
   // --- graceful shutdown ---
   /* v8 ignore start */

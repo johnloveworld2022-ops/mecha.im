@@ -10,7 +10,7 @@ export type PermissionMode = z.infer<typeof PermissionMode>;
 export const BLOCKED_ENV_KEYS = new Set([
   "PATH", "HOME", "USER", "SHELL", "LD_PRELOAD", "LD_LIBRARY_PATH",
   "CLAUDE_CODE_OAUTH_TOKEN", "ANTHROPIC_API_KEY", "MECHA_OTP",
-  "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN", "MECHA_ID",
+  "MECHA_PERMISSION_MODE", "MECHA_AUTH_TOKEN", "MECHA_ID", "MECHA_DB_PATH",
 ]);
 
 /** Pattern for allowed env var keys */
@@ -147,3 +147,52 @@ export const MechaChatInput = z.object({
   message: z.string().min(1),
 });
 export type MechaChatInput = z.infer<typeof MechaChatInput>;
+
+// --- Session schemas ---
+
+export const SessionConfig = z.object({
+  maxTurns:       z.number().int().positive().optional(),
+  systemPrompt:   z.string().optional(),
+  permissionMode: PermissionMode.optional(),
+  model:          z.string().optional(),
+  maxBudgetUsd:   z.number().positive().optional(),
+});
+export type SessionConfig = z.infer<typeof SessionConfig>;
+
+export const SessionCreateInput = z.object({
+  id:     z.string().min(1),
+  title:  z.string().optional(),
+  config: SessionConfig.optional(),
+});
+export type SessionCreateInput = z.infer<typeof SessionCreateInput>;
+
+/** Shared base for session operations that identify a session within a mecha */
+export const SessionRef = z.object({
+  id:        z.string().min(1),
+  sessionId: z.string().min(1),
+});
+export type SessionRef = z.infer<typeof SessionRef>;
+
+export const SessionGetInput = SessionRef;
+export type SessionGetInput = z.infer<typeof SessionGetInput>;
+
+export const SessionDeleteInput = SessionRef;
+export type SessionDeleteInput = z.infer<typeof SessionDeleteInput>;
+
+export const SessionInterruptInput = SessionRef;
+export type SessionInterruptInput = z.infer<typeof SessionInterruptInput>;
+
+export const SessionMessageInput = SessionRef.extend({
+  message: z.string().min(1),
+});
+export type SessionMessageInput = z.infer<typeof SessionMessageInput>;
+
+export const SessionConfigUpdateInput = SessionRef.extend({
+  config: SessionConfig,
+});
+export type SessionConfigUpdateInput = z.infer<typeof SessionConfigUpdateInput>;
+
+export const SessionListInput = z.object({
+  id: z.string().min(1),
+});
+export type SessionListInput = z.infer<typeof SessionListInput>;

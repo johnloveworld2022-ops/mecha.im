@@ -81,4 +81,96 @@ describe("SQLite database", () => {
     expect(cols).toContain("content");
     expect(cols).toContain("created_at");
   });
+
+  it("sessions table has expected columns", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const info = db.prepare("PRAGMA table_info(sessions)").all() as Array<{
+      name: string;
+    }>;
+    const cols = info.map((c) => c.name);
+    expect(cols).toContain("id");
+    expect(cols).toContain("sdk_session_id");
+    expect(cols).toContain("title");
+    expect(cols).toContain("state");
+    expect(cols).toContain("config");
+    expect(cols).toContain("created_at");
+    expect(cols).toContain("updated_at");
+    expect(cols).toContain("last_message_at");
+  });
+
+  it("session_messages table has expected columns", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const info = db
+      .prepare("PRAGMA table_info(session_messages)")
+      .all() as Array<{ name: string }>;
+    const cols = info.map((c) => c.name);
+    expect(cols).toContain("id");
+    expect(cols).toContain("session_id");
+    expect(cols).toContain("role");
+    expect(cols).toContain("content");
+    expect(cols).toContain("sdk_message_id");
+    expect(cols).toContain("created_at");
+  });
+
+  it("FK cascade: deleting session removes its messages", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    db.prepare(
+      "INSERT INTO sessions (id, title, config) VALUES ('s1', 'test', '{}')",
+    ).run();
+    db.prepare(
+      "INSERT INTO session_messages (session_id, role, content) VALUES ('s1', 'user', 'hello')",
+    ).run();
+    db.prepare(
+      "INSERT INTO session_messages (session_id, role, content) VALUES ('s1', 'assistant', 'hi')",
+    ).run();
+
+    // Verify messages exist
+    const before = db
+      .prepare("SELECT COUNT(*) as cnt FROM session_messages WHERE session_id = 's1'")
+      .get() as { cnt: number };
+    expect(before.cnt).toBe(2);
+
+    // Delete session
+    db.prepare("DELETE FROM sessions WHERE id = 's1'").run();
+
+    // Messages should be gone via CASCADE
+    const after = db
+      .prepare("SELECT COUNT(*) as cnt FROM session_messages WHERE session_id = 's1'")
+      .get() as { cnt: number };
+    expect(after.cnt).toBe(0);
+  });
+
+  it("index idx_session_messages_session exists", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const indexes = db
+      .prepare(
+        "SELECT name FROM sqlite_master WHERE type='index' AND name='idx_session_messages_session'",
+      )
+      .all() as Array<{ name: string }>;
+    expect(indexes).toHaveLength(1);
+    expect(indexes[0].name).toBe("idx_session_messages_session");
+  });
+
+  it("runMigrations is idempotent (can be called twice)", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+    // Should not throw when called a second time
+    expect(() => runMigrations(db)).not.toThrow();
+  });
+
+  it("foreign keys are enabled", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const result = db.pragma("foreign_keys") as Array<{ foreign_keys: number }>;
+    expect(result[0].foreign_keys).toBe(1);
+  });
 });

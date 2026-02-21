@@ -18,6 +18,15 @@ export {
   MechaPruneResult,
   MechaUpdateResult,
   MechaChatInput,
+  SessionConfig,
+  SessionCreateInput,
+  SessionRef,
+  SessionMessageInput,
+  SessionGetInput,
+  SessionDeleteInput,
+  SessionInterruptInput,
+  SessionConfigUpdateInput,
+  SessionListInput,
 } from "./schemas.js";
 
 export type {
@@ -37,6 +46,15 @@ export type {
   MechaPruneResult as MechaPruneResultType,
   MechaUpdateResult as MechaUpdateResultType,
   MechaChatInput as MechaChatInputType,
+  SessionConfig as SessionConfigType,
+  SessionCreateInput as SessionCreateInputType,
+  SessionRef as SessionRefType,
+  SessionMessageInput as SessionMessageInputType,
+  SessionGetInput as SessionGetInputType,
+  SessionDeleteInput as SessionDeleteInputType,
+  SessionInterruptInput as SessionInterruptInputType,
+  SessionConfigUpdateInput as SessionConfigUpdateInputType,
+  SessionListInput as SessionListInputType,
 } from "./schemas.js";
 
 export {
@@ -49,6 +67,9 @@ export {
   ConfigureNoFieldsError,
   TokenNotFoundError,
   ChatRequestFailedError,
+  SessionNotFoundError,
+  SessionBusyError,
+  SessionCapReachedError,
   toHttpStatus,
   toExitCode,
   toUserMessage,

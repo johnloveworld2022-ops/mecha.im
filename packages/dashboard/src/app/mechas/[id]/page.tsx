@@ -6,7 +6,7 @@ import { requireAuth } from "@/lib/require-auth";
 import { notFound } from "next/navigation";
 import Link from "next/link";
 import { LogViewer } from "@/components/LogViewer";
-import { MechaChat } from "@/components/MechaChat";
+import { MechaChatWithSessions } from "@/components/MechaChatWithSessions";
 import { MechaSettings } from "@/components/MechaSettings";
 import { MechaEnv } from "@/components/MechaEnv";
 import { MechaExec } from "@/components/MechaExec";
@@ -138,7 +138,7 @@ export default async function MechaDetailPage({
       {isRunning && (
         <section style={{ marginBottom: "24px" }}>
           <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Chat</h2>
-          <MechaChat mechaId={id} />
+          <MechaChatWithSessions mechaId={id} />
         </section>
       )}
 

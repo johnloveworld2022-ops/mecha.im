@@ -1,0 +1,350 @@
+import { describe, it, expect, afterEach, vi } from "vitest";
+import { createServer } from "../src/server.js";
+import { createDatabase, runMigrations } from "../src/db/sqlite.js";
+import type { MechaId } from "@mecha/core";
+import type Database from "better-sqlite3";
+
+// Mock the Claude Agent SDK so sendMessage does not hit a real SDK
+vi.mock("@anthropic-ai/claude-agent-sdk", () => ({
+  query: vi.fn(() =>
+    (async function* () {
+      yield {
+        type: "assistant",
+        message: { content: [{ type: "text", text: "mock response" }] },
+        session_id: "sdk-mock-session",
+      };
+    })(),
+  ),
+}));
+
+const TEST_ID = "mx-test-routes" as MechaId;
+
+function createTestApp(opts?: { withAgent?: boolean; withDb?: boolean }) {
+  const withAgent = opts?.withAgent ?? true;
+  const withDb = opts?.withDb ?? true;
+
+  const db = withDb ? createDatabase(":memory:") : undefined;
+  if (db) runMigrations(db);
+
+  const app = createServer({
+    mechaId: TEST_ID,
+    skipMcp: true,
+    skipAuth: true,
+    db,
+    ...(withAgent
+      ? { agent: { workingDirectory: "/tmp", permissionMode: "default" as const } }
+      : {}),
+  });
+
+  return { app, db };
+}
+
+describe("Session routes", () => {
+  let app: ReturnType<typeof createServer>;
+  let db: Database.Database | undefined;
+
+  afterEach(async () => {
+    if (app) await app.close();
+    if (db) db.close();
+  });
+
+  // --- POST /api/sessions ---
+
+  it("POST /api/sessions returns 201 with session data", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { title: "Test Session" },
+    });
+
+    expect(res.statusCode).toBe(201);
+    const body = JSON.parse(res.body);
+    expect(body.sessionId).toBeDefined();
+    expect(body.state).toBe("idle");
+    expect(body.title).toBe("Test Session");
+  });
+
+  it("POST /api/sessions without agent config returns 503", async () => {
+    ({ app, db } = createTestApp({ withAgent: false, withDb: false }));
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(503);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("not available");
+  });
+
+  it("POST /api/sessions at cap returns 429", async () => {
+    ({ app, db } = createTestApp());
+    // Fill up to MAX_SESSIONS (50)
+    for (let i = 0; i < 50; i++) {
+      db!.prepare(
+        "INSERT INTO sessions (id, title, config) VALUES (?, '', '{}')",
+      ).run(`cap-session-${i}`);
+    }
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(429);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Maximum");
+  });
+
+  // --- GET /api/sessions ---
+
+  it("GET /api/sessions returns array", async () => {
+    ({ app, db } = createTestApp());
+    // Create a session via the API
+    await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { title: "Listed" },
+    });
+
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/sessions",
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(Array.isArray(body)).toBe(true);
+    expect(body.length).toBeGreaterThanOrEqual(1);
+    expect(body[0].title).toBe("Listed");
+  });
+
+  // --- GET /api/sessions/:id ---
+
+  it("GET /api/sessions/:id returns session with messages", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { title: "Detail" },
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    // Insert a message directly for test
+    db!.prepare(
+      "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'user', 'test msg')",
+    ).run(sessionId);
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.sessionId).toBe(sessionId);
+    expect(body.messages).toHaveLength(1);
+    expect(body.messages[0].role).toBe("user");
+    expect(body.messages[0].content).toBe("test msg");
+  });
+
+  it("GET /api/sessions/:id bad id returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "GET",
+      url: "/api/sessions/nonexistent-id",
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("not found");
+  });
+
+  it("GET /api/sessions/:id with limit/offset pagination", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    // Insert multiple messages
+    for (let i = 0; i < 5; i++) {
+      db!.prepare(
+        "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'user', ?)",
+      ).run(sessionId, `message-${i}`);
+    }
+
+    const res = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}?limit=2&offset=1`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.messages).toHaveLength(2);
+    expect(body.messages[0].content).toBe("message-1");
+    expect(body.messages[1].content).toBe("message-2");
+    expect(body.totalMessages).toBe(5);
+  });
+
+  // --- DELETE /api/sessions/:id ---
+
+  it("DELETE /api/sessions/:id returns 204", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "DELETE",
+      url: `/api/sessions/${sessionId}`,
+    });
+
+    expect(res.statusCode).toBe(204);
+
+    // Confirm deleted
+    const getRes = await app.inject({
+      method: "GET",
+      url: `/api/sessions/${sessionId}`,
+    });
+    expect(getRes.statusCode).toBe(404);
+  });
+
+  it("DELETE /api/sessions/:id bad id returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "DELETE",
+      url: "/api/sessions/nonexistent-id",
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  // --- POST /api/sessions/:id/message ---
+
+  it("POST /api/sessions/:id/message missing message returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/message`,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Missing");
+  });
+
+  it("POST /api/sessions/:id/message bad id returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions/nonexistent-id/message",
+      payload: { message: "hello" },
+    });
+
+    expect(res.statusCode).toBe(404);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("not found");
+  });
+
+  // --- POST /api/sessions/:id/interrupt ---
+
+  it("POST /api/sessions/:id/interrupt returns 200", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "POST",
+      url: `/api/sessions/${sessionId}/interrupt`,
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.interrupted).toBe(false); // idle session, nothing to interrupt
+  });
+
+  it("POST /api/sessions/:id/interrupt nonexistent returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions/nonexistent-id/interrupt",
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  // --- PUT /api/sessions/:id/config ---
+
+  it("PUT /api/sessions/:id/config returns 200 with updated config", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/sessions/${sessionId}/config`,
+      payload: { maxTurns: 20, model: "claude-sonnet-4-20250514" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.sessionId).toBe(sessionId);
+    expect(body.config.maxTurns).toBe(20);
+    expect(body.config.model).toBe("claude-sonnet-4-20250514");
+  });
+
+  it("PUT /api/sessions/:id/config with invalid config returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "PUT",
+      url: `/api/sessions/${sessionId}/config`,
+      payload: { maxTurns: -5 }, // negative is invalid (must be positive)
+    });
+
+    expect(res.statusCode).toBe(400);
+    const body = JSON.parse(res.body);
+    expect(body.error).toContain("Invalid config");
+  });
+
+  it("PUT /api/sessions/:id/config nonexistent session returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "PUT",
+      url: "/api/sessions/nonexistent-id/config",
+      payload: { maxTurns: 10 },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+});

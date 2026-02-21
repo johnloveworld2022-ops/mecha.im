@@ -5,23 +5,42 @@ import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLocalRuntime, type ChatModelAdapter } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
 
-function createMechaAdapter(mechaId: string): ChatModelAdapter {
+function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamComplete?: () => void): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
-      const res = await fetch(`/api/mechas/${mechaId}/chat`, {
-        method: "POST",
-        headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({
-          messages: messages.map((m) => ({
-            role: m.role,
-            content: m.content
-              .filter((c) => c.type === "text")
-              .map((c) => c.text)
-              .join(""),
-          })),
-        }),
-        signal: abortSignal,
-      });
+      let res: Response;
+
+      if (sessionId) {
+        // Session-based: send only the latest user message
+        const lastUserMsg = messages.filter((m) => m.role === "user").pop();
+        const message = lastUserMsg?.content
+          .filter((c) => c.type === "text")
+          .map((c) => c.text)
+          .join("") ?? "";
+
+        res = await fetch(`/api/mechas/${mechaId}/sessions/${sessionId}/message`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({ message }),
+          signal: abortSignal,
+        });
+      } else {
+        // Stateless: send full message history
+        res = await fetch(`/api/mechas/${mechaId}/chat`, {
+          method: "POST",
+          headers: { "Content-Type": "application/json" },
+          body: JSON.stringify({
+            messages: messages.map((m) => ({
+              role: m.role,
+              content: m.content
+                .filter((c) => c.type === "text")
+                .map((c) => c.text)
+                .join(""),
+            })),
+          }),
+          signal: abortSignal,
+        });
+      }
 
       if (!res.ok) {
         throw new Error(`HTTP ${res.status}: ${res.statusText}`);
@@ -63,6 +82,30 @@ function createMechaAdapter(mechaId: string): ChatModelAdapter {
           }
         }
       }
+
+      // Flush residual buffer at EOF
+      if (buffer.trim()) {
+        const trimmed = buffer.trim();
+        if (trimmed.startsWith("data: ") && trimmed !== "data: [DONE]") {
+          try {
+            const event = JSON.parse(trimmed.slice(6));
+            const result = extractText(event);
+            if (result) {
+              if (result.mode === "full") {
+                fullText = result.text;
+              } else {
+                fullText += result.text;
+              }
+              yield { content: [{ type: "text" as const, text: fullText }] };
+            }
+          } catch {
+            // skip malformed
+          }
+        }
+      }
+
+      // Notify parent that stream finished (for refreshing session list counts)
+      onStreamComplete?.();
     },
   };
 }
@@ -96,8 +139,14 @@ function extractText(event: Record<string, unknown>): ExtractResult {
   return null;
 }
 
-export function MechaChat({ mechaId }: { mechaId: string }) {
-  const adapter = useMemo(() => createMechaAdapter(mechaId), [mechaId]);
+interface MechaChatProps {
+  mechaId: string;
+  sessionId?: string | null;
+  onStreamComplete?: () => void;
+}
+
+export function MechaChat({ mechaId, sessionId = null, onStreamComplete }: MechaChatProps) {
+  const adapter = useMemo(() => createMechaAdapter(mechaId, sessionId, onStreamComplete), [mechaId, sessionId, onStreamComplete]);
   const runtime = useLocalRuntime(adapter);
 
   return (

@@ -1,6 +1,9 @@
 # ---- Build Stage ----
 FROM node:20-slim@sha256:c6585df72c34172bebd8d36abed961e231d7d3b5cee2e01294c4495e8a03f687 AS build
 
+# Install build tools for native addons (better-sqlite3)
+RUN apt-get update && apt-get install -y --no-install-recommends python3 make g++ && rm -rf /var/lib/apt/lists/*
+
 RUN corepack enable && corepack prepare pnpm@10.26.1 --activate
 
 WORKDIR /build
@@ -10,6 +13,7 @@ COPY pnpm-workspace.yaml pnpm-lock.yaml package.json tsconfig.base.json ./
 
 # Copy only the packages needed for runtime build
 COPY packages/core/package.json packages/core/tsconfig.json ./packages/core/
+COPY packages/contracts/package.json packages/contracts/tsconfig.json ./packages/contracts/
 COPY packages/runtime/package.json packages/runtime/tsconfig.json ./packages/runtime/
 
 # Install dependencies
@@ -17,13 +21,17 @@ RUN pnpm install --frozen-lockfile
 
 # Copy source code
 COPY packages/core/src ./packages/core/src
+COPY packages/contracts/src ./packages/contracts/src
 COPY packages/runtime/src ./packages/runtime/src
 
-# Build core first (runtime depends on it), then runtime
-RUN pnpm --filter @mecha/core build && pnpm --filter @mecha/runtime build
+# Build dependencies first, then runtime
+RUN pnpm --filter @mecha/core build && pnpm --filter @mecha/contracts build && pnpm --filter @mecha/runtime build
 
 # Prune dev dependencies for production
 RUN pnpm --filter @mecha/runtime --prod deploy --legacy /app
+
+# Rebuild native addons (better-sqlite3) in the deployed output
+RUN cd /app && npm rebuild better-sqlite3
 
 # ---- Production Stage ----
 FROM node:20-slim@sha256:c6585df72c34172bebd8d36abed961e231d7d3b5cee2e01294c4495e8a03f687 AS production

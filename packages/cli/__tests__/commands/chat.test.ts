@@ -5,9 +5,13 @@ import type { Formatter } from "../../src/output/formatter.js";
 import { registerChatCommand } from "../../src/commands/chat.js";
 
 const mockMechaChat = vi.fn();
+const mockMechaSessionCreate = vi.fn();
+const mockMechaSessionMessage = vi.fn();
 
 vi.mock("@mecha/service", () => ({
   mechaChat: (...args: unknown[]) => mockMechaChat(...args),
+  mechaSessionCreate: (...args: unknown[]) => mockMechaSessionCreate(...args),
+  mechaSessionMessage: (...args: unknown[]) => mockMechaSessionMessage(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -192,6 +196,79 @@ describe("mecha chat", () => {
     await program.parseAsync(["chat", "mx-test", "hello"], { from: "user" });
 
     expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("connection failed"));
+    expect(process.exitCode).toBe(1);
+    writeSpy.mockRestore();
+  });
+
+  it("--session flag sends message to existing session via mechaSessionMessage", async () => {
+    const res = createMockSSEResponse([
+      'data: {"text":"session reply"}',
+      "data: [DONE]",
+    ]);
+    mockMechaSessionMessage.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hi", "--session", "sess-123"], { from: "user" });
+
+    expect(mockMechaSessionMessage).toHaveBeenCalledWith(
+      deps.dockerClient,
+      { id: "mx-test", sessionId: "sess-123", message: "Hi" },
+    );
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("session reply");
+    writeSpy.mockRestore();
+  });
+
+  it("--new-session flag creates session then sends message", async () => {
+    mockMechaSessionCreate.mockResolvedValueOnce({ sessionId: "test-session-id" });
+    const res = createMockSSEResponse([
+      'data: {"text":"new session reply"}',
+      "data: [DONE]",
+    ]);
+    mockMechaSessionMessage.mockResolvedValueOnce(res);
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hello", "--new-session"], { from: "user" });
+
+    expect(mockMechaSessionCreate).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test" });
+    expect(mockMechaSessionMessage).toHaveBeenCalledWith(
+      deps.dockerClient,
+      { id: "mx-test", sessionId: "test-session-id", message: "Hello" },
+    );
+    expect(formatter.info).toHaveBeenCalledWith("Session: test-session-id");
+    const output = writeSpy.mock.calls.map((c) => String(c[0])).join("");
+    expect(output).toContain("new session reply");
+    writeSpy.mockRestore();
+  });
+
+  it("--new-session reports error on failure", async () => {
+    mockMechaSessionCreate.mockRejectedValueOnce(new Error("cap reached"));
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hello", "--new-session"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("cap reached"));
+    expect(process.exitCode).toBe(1);
+    writeSpy.mockRestore();
+  });
+
+  it("rejects --session and --new-session together", async () => {
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hi", "--session", "s1", "--new-session"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith("Cannot use --session and --new-session together");
+    expect(process.exitCode).toBe(1);
+    writeSpy.mockRestore();
+  });
+
+  it("--session reports error on failure", async () => {
+    mockMechaSessionMessage.mockRejectedValueOnce(new Error("session not found"));
+    const program = new Command();
+    registerChatCommand(program, deps);
+    await program.parseAsync(["chat", "mx-test", "Hi", "--session", "bad-sess"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("session not found"));
     expect(process.exitCode).toBe(1);
     writeSpy.mockRestore();
   });

@@ -24,6 +24,7 @@ import { registerEnvCommand } from "./commands/env.js";
 import { registerPruneCommand } from "./commands/prune.js";
 import { registerUpdateCommand } from "./commands/update.js";
 import { registerChatCommand } from "./commands/chat.js";
+import { registerSessionsCommand } from "./commands/sessions.js";
 import { registerCompletionsCommand } from "./commands/completions.js";
 
 const require = createRequire(import.meta.url);
@@ -77,6 +78,7 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   registerPruneCommand(program, deps);
   registerUpdateCommand(program, deps);
   registerChatCommand(program, deps);
+  registerSessionsCommand(program, deps);
   registerCompletionsCommand(program, deps);
 
   return program;

@@ -7,8 +7,8 @@ export interface AgentOptions {
   permissionMode?: "default" | "plan" | "full-auto";
 }
 
-type PermissionMode = "acceptEdits" | "plan" | "default";
-const PERMISSION_MAP: Record<string, PermissionMode> = { "full-auto": "acceptEdits", plan: "plan", default: "default" };
+export type SdkPermissionMode = "acceptEdits" | "plan" | "default";
+export const PERMISSION_MAP: Record<string, SdkPermissionMode> = { "full-auto": "acceptEdits", plan: "plan", default: "default" };
 
 /**
  * Register agent chat routes on Fastify.
@@ -41,8 +41,8 @@ export function registerAgentRoutes(
 
       const abortController = new AbortController();
 
-      // Clean up if client disconnects
-      req.raw.on("close", () => {
+      // Clean up if client disconnects (use socket close, not req.raw close which fires on body consumption)
+      req.socket.on("close", () => {
         abortController.abort();
       });
 

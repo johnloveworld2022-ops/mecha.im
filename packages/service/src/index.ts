@@ -20,4 +20,11 @@ export {
   mechaUpdate,
   mechaChat,
   loadDotEnvFiles,
+  mechaSessionCreate,
+  mechaSessionList,
+  mechaSessionGet,
+  mechaSessionDelete,
+  mechaSessionMessage,
+  mechaSessionInterrupt,
+  mechaSessionConfigUpdate,
 } from "./service.js";
