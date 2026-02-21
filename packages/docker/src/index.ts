@@ -16,3 +16,5 @@ export {
 } from "./container.js";
 export { pullImage, imageExists } from "./image.js";
 export { invalidateCache } from "./cache.js";
+export { watchContainerEvents } from "./events.js";
+export type { ContainerEvent, WatchEventsOptions } from "./events.js";
