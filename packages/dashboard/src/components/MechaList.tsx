@@ -2,6 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { PruneButton } from "./PruneButton";
 
 interface Mecha {
   id: string;
@@ -10,6 +11,8 @@ interface Mecha {
   path: string;
   ports: Array<{ PublicPort?: number }>;
 }
+
+const PRUNABLE_STATES = new Set(["exited", "dead", "created"]);
 
 export function MechaList() {
   const [mechas, setMechas] = useState<Mecha[]>([]);
@@ -24,6 +27,7 @@ export function MechaList() {
   const [permissionMode, setPermissionMode] = useState("default");
   const [actionError, setActionError] = useState("");
   const [confirmRemove, setConfirmRemove] = useState<string | null>(null);
+  const [removeWithState, setRemoveWithState] = useState(false);
 
   const fetchMechas = useCallback(async () => {
     try {
@@ -70,12 +74,14 @@ export function MechaList() {
     }
   }
 
-  async function removeMecha(id: string) {
+  async function removeMecha(id: string, withState: boolean) {
     setConfirmRemove(null);
+    setRemoveWithState(false);
     setActing(id);
     setActionError("");
     try {
-      const res = await fetch(`/api/mechas/${id}`, { method: "DELETE" });
+      const url = `/api/mechas/${id}${withState ? "?withState=true" : ""}`;
+      const res = await fetch(url, { method: "DELETE" });
       if (!res.ok) {
         const data = await res.json().catch(() => ({})) as { error?: string };
         setActionError(data.error ?? `Remove failed (${res.status})`);
@@ -123,6 +129,8 @@ export function MechaList() {
   if (loading) {
     return <p style={{ color: "var(--text-muted)", padding: "20px" }}>Loading...</p>;
   }
+
+  const prunableCount = mechas.filter((m) => PRUNABLE_STATES.has(m.state)).length;
 
   const createButton = (
     <button
@@ -281,7 +289,10 @@ export function MechaList() {
 
   return (
     <div>
-      <div style={{ marginBottom: "12px" }}>{createButton}</div>
+      <div style={{ display: "flex", gap: "8px", alignItems: "center", marginBottom: "12px" }}>
+        {createButton}
+        <PruneButton prunableCount={prunableCount} onPruned={fetchMechas} />
+      </div>
       {createForm}
       <div style={{ overflowX: "auto" }}>
       <table style={{
@@ -399,7 +410,7 @@ export function MechaList() {
       )}
       {confirmRemove && (
         <div
-          onClick={() => setConfirmRemove(null)}
+          onClick={() => { setConfirmRemove(null); setRemoveWithState(false); }}
           style={{
             position: "fixed",
             inset: 0,
@@ -422,12 +433,28 @@ export function MechaList() {
             }}
           >
             <h3 style={{ fontSize: "16px", fontWeight: 600, marginBottom: "8px" }}>Remove Mecha</h3>
-            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "20px" }}>
+            <p style={{ fontSize: "14px", color: "var(--text-muted)", marginBottom: "12px" }}>
               Remove <code style={{ color: "var(--text)" }}>{confirmRemove}</code>? This will delete the container.
             </p>
+            <label style={{
+              display: "flex",
+              alignItems: "center",
+              gap: "6px",
+              fontSize: "13px",
+              color: "var(--text-muted)",
+              marginBottom: "16px",
+              cursor: "pointer",
+            }}>
+              <input
+                type="checkbox"
+                checked={removeWithState}
+                onChange={(e) => setRemoveWithState(e.target.checked)}
+              />
+              Also remove state volume
+            </label>
             <div style={{ display: "flex", gap: "8px", justifyContent: "flex-end" }}>
               <button
-                onClick={() => setConfirmRemove(null)}
+                onClick={() => { setConfirmRemove(null); setRemoveWithState(false); }}
                 style={{
                   padding: "8px 16px",
                   fontSize: "13px",
@@ -439,7 +466,7 @@ export function MechaList() {
                 }}
               >Cancel</button>
               <button
-                onClick={() => removeMecha(confirmRemove)}
+                onClick={() => removeMecha(confirmRemove, removeWithState)}
                 style={{
                   padding: "8px 16px",
                   fontSize: "13px",

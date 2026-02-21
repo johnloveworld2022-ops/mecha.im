@@ -48,11 +48,12 @@ export const PATCH = withAuth(async (request: NextRequest, { params }) => {
   }
 });
 
-export const DELETE = withAuth(async (_request: NextRequest, { params }) => {
+export const DELETE = withAuth(async (request: NextRequest, { params }) => {
   const { id } = await params;
+  const withState = request.nextUrl.searchParams.get("withState") === "true";
   const client = getDockerClient();
   try {
-    await mechaRm(client, { id, force: true, withState: false });
+    await mechaRm(client, { id, force: true, withState });
     return NextResponse.json({ ok: true });
   } catch (err) {
     if (err instanceof ContainerNotFoundError) {

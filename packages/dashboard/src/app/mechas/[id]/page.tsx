@@ -8,6 +8,10 @@ import Link from "next/link";
 import { LogViewer } from "@/components/LogViewer";
 import { MechaChat } from "@/components/MechaChat";
 import { MechaSettings } from "@/components/MechaSettings";
+import { MechaEnv } from "@/components/MechaEnv";
+import { MechaExec } from "@/components/MechaExec";
+import { MechaInspect } from "@/components/MechaInspect";
+import { MechaUpdate } from "@/components/MechaUpdate";
 
 export default async function MechaDetailPage({
   params,
@@ -68,6 +72,7 @@ export default async function MechaDetailPage({
           }} />
           {state?.Status ?? "unknown"}
         </span>
+        <MechaUpdate mechaId={id} />
       </div>
 
       {/* Status card */}
@@ -101,6 +106,34 @@ export default async function MechaDetailPage({
         </div>
       </section>
 
+      {/* Environment */}
+      <section style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Environment</h2>
+        <div style={{
+          padding: "16px",
+          borderRadius: "8px",
+          backgroundColor: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+        }}>
+          <MechaEnv mechaId={id} />
+        </div>
+      </section>
+
+      {/* Execute Command (only when running) */}
+      {isRunning && (
+        <section style={{ marginBottom: "24px" }}>
+          <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Execute Command</h2>
+          <div style={{
+            padding: "16px",
+            borderRadius: "8px",
+            backgroundColor: "var(--bg-secondary)",
+            border: "1px solid var(--border)",
+          }}>
+            <MechaExec mechaId={id} />
+          </div>
+        </section>
+      )}
+
       {/* Chat with mecha */}
       {isRunning && (
         <section style={{ marginBottom: "24px" }}>
@@ -111,11 +144,24 @@ export default async function MechaDetailPage({
 
       {/* Logs */}
       {isRunning && (
-        <section>
+        <section style={{ marginBottom: "24px" }}>
           <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Logs</h2>
           <LogViewer mechaId={id} />
         </section>
       )}
+
+      {/* Inspect */}
+      <section style={{ marginBottom: "24px" }}>
+        <h2 style={{ fontSize: "16px", fontWeight: 500, marginBottom: "12px" }}>Inspect</h2>
+        <div style={{
+          padding: "16px",
+          borderRadius: "8px",
+          backgroundColor: "var(--bg-secondary)",
+          border: "1px solid var(--border)",
+        }}>
+          <MechaInspect mechaId={id} />
+        </div>
+      </section>
 
       {!isRunning && (
         <div style={{
@@ -127,7 +173,7 @@ export default async function MechaDetailPage({
           borderRadius: "8px",
           border: "1px solid var(--border)",
         }}>
-          Container is not running. Start it to view logs and chat.
+          Container is not running. Start it to view logs, chat, and execute commands.
         </div>
       )}
     </main>
