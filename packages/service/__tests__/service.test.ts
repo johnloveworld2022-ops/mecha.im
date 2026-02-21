@@ -36,6 +36,7 @@ const mockEnsureVolume = vi.fn().mockResolvedValue(undefined);
 const mockRemoveVolume = vi.fn().mockResolvedValue(undefined);
 const mockCreateContainer = vi.fn().mockResolvedValue({ id: "abc" });
 const mockGetContainerPort = vi.fn().mockResolvedValue(7700);
+const mockGetContainerPortAndEnv = vi.fn().mockResolvedValue({ port: 7700, env: [] });
 const mockStartContainer = vi.fn().mockResolvedValue(undefined);
 const mockStopContainer = vi.fn().mockResolvedValue(undefined);
 const mockRemoveContainer = vi.fn().mockResolvedValue(undefined);
@@ -51,6 +52,7 @@ vi.mock("@mecha/docker", () => ({
   removeVolume: (...a: unknown[]) => mockRemoveVolume(...a),
   createContainer: (...a: unknown[]) => mockCreateContainer(...a),
   getContainerPort: (...a: unknown[]) => mockGetContainerPort(...a),
+  getContainerPortAndEnv: (...a: unknown[]) => mockGetContainerPortAndEnv(...a),
   startContainer: (...a: unknown[]) => mockStartContainer(...a),
   stopContainer: (...a: unknown[]) => mockStopContainer(...a),
   removeContainer: (...a: unknown[]) => mockRemoveContainer(...a),
@@ -70,6 +72,7 @@ beforeEach(() => {
   mockRemoveVolume.mockResolvedValue(undefined);
   mockCreateContainer.mockResolvedValue({ id: "abc" });
   mockGetContainerPort.mockResolvedValue(7700);
+  mockGetContainerPortAndEnv.mockResolvedValue({ port: 7700, env: [] });
   mockStartContainer.mockResolvedValue(undefined);
   mockStopContainer.mockResolvedValue(undefined);
   mockRemoveContainer.mockResolvedValue(undefined);
@@ -534,16 +537,27 @@ describe("resolveUiUrl", () => {
 });
 
 describe("resolveMcpEndpoint", () => {
-  it("returns endpoint with port", async () => {
-    mockGetContainerPort.mockResolvedValue(7700);
+  it("returns endpoint with port and token", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValue({
+      port: 7700,
+      env: ["MECHA_AUTH_TOKEN=abc123", "OTHER=val"],
+    });
 
     const result = await resolveMcpEndpoint(client, "mx-foo");
     expect(result.endpoint).toBe("http://127.0.0.1:7700/mcp");
-    expect(result.note).toBeDefined();
+    expect(result.token).toBe("abc123");
+  });
+
+  it("returns undefined token when not in env", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValue({ port: 7700, env: [] });
+
+    const result = await resolveMcpEndpoint(client, "mx-foo");
+    expect(result.endpoint).toBe("http://127.0.0.1:7700/mcp");
+    expect(result.token).toBeUndefined();
   });
 
   it("throws NoPortBindingError when no port", async () => {
-    mockGetContainerPort.mockResolvedValue(undefined);
+    mockGetContainerPortAndEnv.mockResolvedValue({ port: undefined, env: [] });
 
     await expect(resolveMcpEndpoint(client, "mx-foo")).rejects.toThrow(NoPortBindingError);
   });

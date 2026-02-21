@@ -66,6 +66,20 @@ export async function getContainerPort(client: DockerClient, name: string): Prom
   return portStr ? parseInt(portStr, 10) : undefined;
 }
 
+/** Get host port and env vars from a single inspect call */
+export async function getContainerPortAndEnv(
+  client: DockerClient,
+  name: string,
+): Promise<{ port: number | undefined; env: string[] }> {
+  const info = await inspectContainer(client, name);
+  const bindings = info.NetworkSettings?.Ports?.[`${DEFAULTS.CONTAINER_PORT}/tcp`];
+  const portStr = bindings?.[0]?.HostPort;
+  return {
+    port: portStr ? parseInt(portStr, 10) : undefined,
+    env: (info.Config?.Env ?? []) as string[],
+  };
+}
+
 // --- Lifecycle operations ---
 
 export async function startContainer(client: DockerClient, name: string): Promise<void> {

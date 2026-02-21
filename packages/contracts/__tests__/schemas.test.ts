@@ -273,9 +273,15 @@ describe("UiUrlResult", () => {
 
 describe("McpEndpointResult", () => {
   it("parses valid endpoint", () => {
-    const result = McpEndpointResult.parse({ endpoint: "http://127.0.0.1:7700/mcp", note: "use bearer token" });
+    const result = McpEndpointResult.parse({ endpoint: "http://127.0.0.1:7700/mcp", token: "abc123" });
     expect(result.endpoint).toBe("http://127.0.0.1:7700/mcp");
-    expect(result.note).toBe("use bearer token");
+    expect(result.token).toBe("abc123");
+  });
+
+  it("parses endpoint without token", () => {
+    const result = McpEndpointResult.parse({ endpoint: "http://127.0.0.1:7700/mcp" });
+    expect(result.endpoint).toBe("http://127.0.0.1:7700/mcp");
+    expect(result.token).toBeUndefined();
   });
 });
 

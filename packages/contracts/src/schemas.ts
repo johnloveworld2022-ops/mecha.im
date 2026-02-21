@@ -113,7 +113,7 @@ export type UiUrlResult = z.infer<typeof UiUrlResult>;
 
 export const McpEndpointResult = z.object({
   endpoint: z.string(),
-  note:     z.string(),
+  token:    z.string().optional(),
 });
 export type McpEndpointResult = z.infer<typeof McpEndpointResult>;
 

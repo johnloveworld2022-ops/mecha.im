@@ -9,6 +9,7 @@ import {
   removeVolume,
   createContainer,
   getContainerPort,
+  getContainerPortAndEnv,
   startContainer,
   stopContainer,
   removeContainer,
@@ -396,12 +397,12 @@ export async function resolveUiUrl(client: DockerClient, id: string): Promise<Ui
 
 // --- 14. resolveMcpEndpoint ---
 export async function resolveMcpEndpoint(client: DockerClient, id: string): Promise<McpEndpointResultType> {
-  const port = await getContainerPort(client, containerName(id as MechaId));
+  const cName = containerName(id as MechaId);
+  const { port, env } = await getContainerPortAndEnv(client, cName);
   if (!port) throw new NoPortBindingError(id);
-  return {
-    endpoint: `http://127.0.0.1:${port}/mcp`,
-    note: "check container logs for auth token",
-  };
+  const tokenEntry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
+  const token = tokenEntry ? tokenEntry.split("=").slice(1).join("=") : undefined;
+  return { endpoint: `http://127.0.0.1:${port}/mcp`, token };
 }
 
 // --- 15. mechaToken ---
@@ -409,8 +410,8 @@ export async function mechaToken(
   client: DockerClient,
   id: string,
 ): Promise<MechaTokenResultType> {
-  const info = await inspectContainer(client, containerName(id as MechaId));
-  const entry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
+  const { env } = await getContainerPortAndEnv(client, containerName(id as MechaId));
+  const entry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
   if (!entry) throw new TokenNotFoundError(id);
   return { id, token: entry.split("=").slice(1).join("=") };
 }
@@ -511,10 +512,9 @@ export { loadDotEnvFiles } from "./env.js";
 // --- Helper: get runtime URL and auth token ---
 async function getRuntimeAccess(client: DockerClient, mechaId: string): Promise<{ url: string; token: string }> {
   const cName = containerName(mechaId as MechaId);
-  const port = await getContainerPort(client, cName);
+  const { port, env } = await getContainerPortAndEnv(client, cName);
   if (!port) throw new NoPortBindingError(mechaId);
-  const info = await inspectContainer(client, cName);
-  const tokenEntry = (info.Config?.Env ?? []).find((e: string) => e.startsWith("MECHA_AUTH_TOKEN="));
+  const tokenEntry = env.find((e) => e.startsWith("MECHA_AUTH_TOKEN="));
   if (!tokenEntry) throw new TokenNotFoundError(mechaId);
   const token = tokenEntry.split("=").slice(1).join("=");
   return { url: `http://127.0.0.1:${port}`, token };

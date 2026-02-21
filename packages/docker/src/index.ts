@@ -5,6 +5,7 @@ export { ensureVolume, removeVolume } from "./volume.js";
 export {
   createContainer,
   getContainerPort,
+  getContainerPortAndEnv,
   startContainer,
   stopContainer,
   removeContainer,

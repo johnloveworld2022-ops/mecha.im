@@ -3,6 +3,7 @@ import { PassThrough } from "node:stream";
 import {
   createContainer,
   getContainerPort,
+  getContainerPortAndEnv,
   startContainer,
   stopContainer,
   removeContainer,
@@ -194,6 +195,52 @@ describe("getContainerPort", () => {
 
     const port = await getContainerPort(client, "mecha-mx-test");
     expect(port).toBeUndefined();
+  });
+});
+
+describe("getContainerPortAndEnv", () => {
+  it("returns port and env from inspect data", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: {
+          Ports: { "3000/tcp": [{ HostIp: "127.0.0.1", HostPort: "7700" }] },
+        },
+        Config: { Env: ["MECHA_ID=mx-test", "MECHA_AUTH_TOKEN=tok123"] },
+      }),
+    });
+
+    const result = await getContainerPortAndEnv(client, "mecha-mx-test");
+    expect(result.port).toBe(7700);
+    expect(result.env).toEqual(["MECHA_ID=mx-test", "MECHA_AUTH_TOKEN=tok123"]);
+  });
+
+  it("returns undefined port when no bindings exist", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: { Ports: {} },
+        Config: { Env: ["FOO=bar"] },
+      }),
+    });
+
+    const result = await getContainerPortAndEnv(client, "mecha-mx-test");
+    expect(result.port).toBeUndefined();
+    expect(result.env).toEqual(["FOO=bar"]);
+  });
+
+  it("returns empty env array when Config.Env is missing", async () => {
+    const client = createMockClient();
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: vi.fn().mockResolvedValue({
+        NetworkSettings: { Ports: { "3000/tcp": [{ HostPort: "8080" }] } },
+        Config: {},
+      }),
+    });
+
+    const result = await getContainerPortAndEnv(client, "mecha-mx-test");
+    expect(result.port).toBe(8080);
+    expect(result.env).toEqual([]);
   });
 });
 

@@ -30,6 +30,7 @@ const mockEnsureVolume = vi.fn().mockResolvedValue(undefined);
 const mockRemoveVolume = vi.fn().mockResolvedValue(undefined);
 const mockCreateContainer = vi.fn().mockResolvedValue({ id: "abc" });
 const mockGetContainerPort = vi.fn().mockResolvedValue(7700);
+const mockGetContainerPortAndEnv = vi.fn().mockResolvedValue({ port: 7700, env: [] });
 const mockStartContainer = vi.fn().mockResolvedValue(undefined);
 const mockStopContainer = vi.fn().mockResolvedValue(undefined);
 const mockRemoveContainer = vi.fn().mockResolvedValue(undefined);
@@ -46,6 +47,7 @@ vi.mock("@mecha/docker", () => ({
   removeVolume: (...a: unknown[]) => mockRemoveVolume(...a),
   createContainer: (...a: unknown[]) => mockCreateContainer(...a),
   getContainerPort: (...a: unknown[]) => mockGetContainerPort(...a),
+  getContainerPortAndEnv: (...a: unknown[]) => mockGetContainerPortAndEnv(...a),
   startContainer: (...a: unknown[]) => mockStartContainer(...a),
   stopContainer: (...a: unknown[]) => mockStopContainer(...a),
   removeContainer: (...a: unknown[]) => mockRemoveContainer(...a),
@@ -63,6 +65,7 @@ beforeEach(() => {
   vi.clearAllMocks();
   mockInspectContainer.mockResolvedValue({});
   mockGetContainerPort.mockResolvedValue(7700);
+  mockGetContainerPortAndEnv.mockResolvedValue({ port: 7700, env: [] });
   mockListMechaContainers.mockResolvedValue([]);
   mockPullImage.mockResolvedValue(undefined);
   mockRemoveContainer.mockResolvedValue(undefined);
@@ -75,8 +78,9 @@ beforeEach(() => {
 // --- mechaToken ---
 describe("mechaToken", () => {
   it("returns token from container env", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["PATH=/usr/bin", "MECHA_AUTH_TOKEN=my-token-123"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["PATH=/usr/bin", "MECHA_AUTH_TOKEN=my-token-123"],
     });
     const result = await mechaToken(client, "mx-abc123");
     expect(result.token).toBe("my-token-123");
@@ -84,27 +88,29 @@ describe("mechaToken", () => {
   });
 
   it("handles token values containing equals signs", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["MECHA_AUTH_TOKEN=abc=def=ghi"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["MECHA_AUTH_TOKEN=abc=def=ghi"],
     });
     const result = await mechaToken(client, "mx-abc");
     expect(result.token).toBe("abc=def=ghi");
   });
 
   it("throws TokenNotFoundError when no token env", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["PATH=/usr/bin"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["PATH=/usr/bin"],
     });
     await expect(mechaToken(client, "mx-abc")).rejects.toThrow(TokenNotFoundError);
   });
 
   it("throws TokenNotFoundError when Env is empty", async () => {
-    mockInspectContainer.mockResolvedValueOnce({ Config: { Env: [] } });
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: [] });
     await expect(mechaToken(client, "mx-abc")).rejects.toThrow(TokenNotFoundError);
   });
 
-  it("throws TokenNotFoundError when Config.Env is undefined", async () => {
-    mockInspectContainer.mockResolvedValueOnce({ Config: {} });
+  it("throws TokenNotFoundError when env is empty array", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: [] });
     await expect(mechaToken(client, "mx-abc")).rejects.toThrow(TokenNotFoundError);
   });
 });
@@ -249,8 +255,9 @@ describe("mechaUpdate", () => {
 // --- mechaChat ---
 describe("mechaChat", () => {
   it("sends chat request and returns response", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["MECHA_AUTH_TOKEN=tok123"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["MECHA_AUTH_TOKEN=tok123"],
     });
     const mockResponse = { ok: true, body: null } as unknown as Response;
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce(mockResponse));
@@ -263,25 +270,27 @@ describe("mechaChat", () => {
   });
 
   it("throws TokenNotFoundError when no token env", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["PATH=/usr/bin"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["PATH=/usr/bin"],
     });
     await expect(mechaChat(client, { id: "mx-abc", message: "hello" })).rejects.toThrow(TokenNotFoundError);
   });
 
-  it("throws TokenNotFoundError when Config.Env is undefined", async () => {
-    mockInspectContainer.mockResolvedValueOnce({ Config: {} });
+  it("throws TokenNotFoundError when env is empty", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: [] });
     await expect(mechaChat(client, { id: "mx-abc", message: "hello" })).rejects.toThrow(TokenNotFoundError);
   });
 
   it("throws when no port binding", async () => {
-    mockGetContainerPort.mockResolvedValueOnce(null);
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: undefined, env: [] });
     await expect(mechaChat(client, { id: "mx-abc", message: "hi" })).rejects.toThrow(NoPortBindingError);
   });
 
   it("aborts on timeout", async () => {
-    mockInspectContainer.mockResolvedValueOnce({
-      Config: { Env: ["MECHA_AUTH_TOKEN=tok"] },
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["MECHA_AUTH_TOKEN=tok"],
     });
     const abortError = new DOMException("The operation was aborted", "AbortError");
     vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(abortError));
@@ -290,7 +299,10 @@ describe("mechaChat", () => {
   });
 
   it("throws on non-ok response", async () => {
-    mockInspectContainer.mockResolvedValueOnce({ Config: { Env: ["MECHA_AUTH_TOKEN=tok"] } });
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({
+      port: 7700,
+      env: ["MECHA_AUTH_TOKEN=tok"],
+    });
     vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: false, status: 500, statusText: "Internal" }));
     await expect(mechaChat(client, { id: "mx-abc", message: "hi" })).rejects.toThrow(ChatRequestFailedError);
     vi.unstubAllGlobals();
@@ -299,10 +311,10 @@ describe("mechaChat", () => {
 
 // --- Helper: set up runtime access mocks (token + port) ---
 function setupRuntimeAccess(): void {
-  mockInspectContainer.mockResolvedValue({
-    Config: { Env: ["MECHA_AUTH_TOKEN=test-token"] },
+  mockGetContainerPortAndEnv.mockResolvedValue({
+    port: 7700,
+    env: ["MECHA_AUTH_TOKEN=test-token"],
   });
-  mockGetContainerPort.mockResolvedValue(7700);
 }
 
 // --- getRuntimeAccess error paths (tested via session functions) ---
@@ -310,19 +322,17 @@ describe("getRuntimeAccess error paths", () => {
   afterEach(() => vi.unstubAllGlobals());
 
   it("throws NoPortBindingError when no port", async () => {
-    mockGetContainerPort.mockResolvedValueOnce(null);
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: undefined, env: [] });
     await expect(mechaSessionCreate(client, { id: "mx-abc" })).rejects.toThrow(NoPortBindingError);
   });
 
   it("throws TokenNotFoundError when no token env", async () => {
-    mockGetContainerPort.mockResolvedValueOnce(7700);
-    mockInspectContainer.mockResolvedValueOnce({ Config: { Env: [] } });
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: [] });
     await expect(mechaSessionCreate(client, { id: "mx-abc" })).rejects.toThrow(TokenNotFoundError);
   });
 
-  it("throws TokenNotFoundError when Config.Env is undefined", async () => {
-    mockGetContainerPort.mockResolvedValueOnce(7700);
-    mockInspectContainer.mockResolvedValueOnce({ Config: {} });
+  it("throws TokenNotFoundError when env has no token entry", async () => {
+    mockGetContainerPortAndEnv.mockResolvedValueOnce({ port: 7700, env: ["OTHER=val"] });
     await expect(mechaSessionCreate(client, { id: "mx-abc" })).rejects.toThrow(TokenNotFoundError);
   });
 });
