@@ -11,22 +11,23 @@
 import { describe, it, expect, beforeAll, afterAll } from "vitest";
 import { execSync } from "node:child_process";
 
-const SKIP = false;
+const SKIP = !process.env.INTEGRATION;
 const IMAGE_NAME = "mecha-runtime:test";
 const CONTAINER_NAME = "mecha-runtime-integration-test";
 const HOST_PORT = 7799;
 const AUTH_TOKEN = "test-integration-token-1234567890";
 
-function run(cmd: string): string {
-  return execSync(cmd, { encoding: "utf-8", timeout: 120_000 }).trim();
+function run(cmd: string, timeout = 120_000): string {
+  return execSync(cmd, { encoding: "utf-8", timeout }).trim();
 }
 
 describe.skipIf(SKIP)("Docker image integration", () => {
   beforeAll(() => {
-    // Build the image from project root
+    // Build the image from project root (may take several minutes for npm installs)
     const root = new URL("../../../../", import.meta.url).pathname;
     run(
       `docker build -f ${root}Dockerfile.mecha-runtime -t ${IMAGE_NAME} ${root}`,
+      300_000,
     );
 
     // Start container

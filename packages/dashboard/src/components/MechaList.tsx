@@ -306,7 +306,7 @@ export function MechaList() {
             const isActing = acting === m.id;
             const isRunning = m.state === "running";
             return (
-              <tr key={m.id} style={{ borderBottom: "1px solid var(--border)" }}>
+              <tr key={m.name || m.id} style={{ borderBottom: "1px solid var(--border)" }}>
                 <td style={{ padding: "10px 12px" }}>
                   <Link href={`/mechas/${m.id}`} style={{ fontFamily: "monospace" }}>
                     {m.id}

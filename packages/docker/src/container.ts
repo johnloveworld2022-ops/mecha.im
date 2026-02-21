@@ -13,6 +13,7 @@ export interface CreateContainerOptions {
   volumeName: string;
   hostPort?: number;
   env?: string[];
+  cmd?: string[];
 }
 
 /** Create a Mecha container with security defaults baked in */
@@ -23,6 +24,7 @@ export async function createContainer(
   return client.docker.createContainer({
     name: opts.containerName,
     Image: opts.image,
+    ...(opts.cmd ? { Cmd: opts.cmd } : {}),
     Env: [
       `MECHA_ID=${opts.mechaId}`,
       ...(opts.env || []),

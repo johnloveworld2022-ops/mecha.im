@@ -19,7 +19,7 @@ import { DEFAULTS } from "@mecha/core";
 
 const SKIP = !process.env.INTEGRATION;
 const TEST_IMAGE = "alpine:latest";
-const TEST_NETWORK = "mecha-test-net";
+const TEST_NETWORK = DEFAULTS.NETWORK;
 const TEST_PREFIX = "mecha-inttest";
 
 /** Generate a unique test container name */
@@ -46,10 +46,9 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
     for (const vol of cleanupVolumes) {
       try { await removeVolume(client, vol); } catch { /* ignore */ }
     }
-    try { await removeNetwork(client, TEST_NETWORK); } catch { /* ignore */ }
   });
 
-  it("full lifecycle: create → start → inspect → stop → remove", async () => {
+  it("full lifecycle: create → start → inspect → stop → remove", { timeout: 15000 }, async () => {
     const cName = testName("lifecycle");
     const vName = `${cName}-state`;
     cleanupContainers.push(cName);
@@ -65,6 +64,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       volumeName: vName,
       hostPort: 17700,
       env: ["MECHA_AUTH_TOKEN=test123"],
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
@@ -96,6 +96,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName,
       hostPort: 17788,
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
@@ -118,6 +119,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName,
       // hostPort omitted — Docker picks one
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
@@ -145,6 +147,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName1,
       hostPort: 17701,
+      cmd: ["sleep", "infinity"],
     });
     await createContainer(client, {
       containerName: cName2,
@@ -153,6 +156,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName2,
       hostPort: 17702,
+      cmd: ["sleep", "infinity"],
     });
 
     const containers = await listMechaContainers(client);
@@ -175,6 +179,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName,
       hostPort: 17703,
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
@@ -199,6 +204,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       volumeName: vName,
       hostPort: 17704,
       env: ["MECHA_AUTH_TOKEN=test"],
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
@@ -224,6 +230,7 @@ describe.skipIf(SKIP)("Docker integration: lifecycle", () => {
       projectPath: "/tmp",
       volumeName: vName,
       hostPort: 17705,
+      cmd: ["sleep", "infinity"],
     });
 
     await startContainer(client, cName);
