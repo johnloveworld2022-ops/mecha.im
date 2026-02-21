@@ -4,19 +4,12 @@ import { containerName, ContainerNotFoundError, DEFAULTS, generateTotp } from "@
 import type { MechaId } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { getOtpSecret } from "@/lib/auth";
-import { checkAuth } from "@/lib/api-auth";
+import { withStreamAuth } from "@/lib/api-auth";
 
-export async function POST(
+export const POST = withStreamAuth(async (
   request: NextRequest,
   { params }: { params: Promise<Record<string, string>> },
-): Promise<Response> {
-  if (!(await checkAuth())) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
+): Promise<Response> => {
   const { id } = await params;
   const client = getDockerClient();
   const name = containerName(id as MechaId);
@@ -116,4 +109,4 @@ export async function POST(
       Connection: "keep-alive",
     },
   });
-}
+});

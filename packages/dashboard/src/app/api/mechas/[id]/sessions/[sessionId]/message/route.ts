@@ -2,19 +2,12 @@ import { type NextRequest } from "next/server";
 import { mechaSessionMessage } from "@mecha/service";
 import { SessionNotFoundError, SessionBusyError, toHttpStatus, toSafeMessage } from "@mecha/contracts";
 import { getDockerClient } from "@/lib/docker";
-import { checkAuth } from "@/lib/api-auth";
+import { withStreamAuth } from "@/lib/api-auth";
 
-export async function POST(
+export const POST = withStreamAuth(async (
   request: NextRequest,
   { params }: { params: Promise<Record<string, string>> },
-): Promise<Response> {
-  if (!(await checkAuth())) {
-    return new Response(JSON.stringify({ error: "Unauthorized" }), {
-      status: 401,
-      headers: { "Content-Type": "application/json" },
-    });
-  }
-
+): Promise<Response> => {
   const { id, sessionId } = await params;
   const client = getDockerClient();
 
@@ -62,4 +55,4 @@ export async function POST(
     }
     throw err;
   }
-}
+});

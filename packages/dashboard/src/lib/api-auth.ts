@@ -21,3 +21,22 @@ export function withAuth(handler: RouteHandler): RouteHandler {
     return handler(request, context);
   };
 }
+
+type StreamRouteHandler = (
+  request: NextRequest,
+  context: { params: Promise<Record<string, string>> },
+) => Promise<Response> | Response;
+
+/** Wrap an SSE/streaming route handler with the same auth check as withAuth.
+ *  Returns a plain Response (not NextResponse) to support streaming bodies. */
+export function withStreamAuth(handler: StreamRouteHandler): StreamRouteHandler {
+  return async (request, context) => {
+    if (!(await checkAuth())) {
+      return new Response(JSON.stringify({ error: "Unauthorized" }), {
+        status: 401,
+        headers: { "Content-Type": "application/json" },
+      });
+    }
+    return handler(request, context);
+  };
+}
