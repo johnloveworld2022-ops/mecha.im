@@ -12,9 +12,14 @@ import {
   getContainerLogs,
   execInContainer,
 } from "../src/container.js";
+import { invalidateCache } from "../src/cache.js";
 import { ContainerNotFoundError, LABELS, SECURITY } from "@mecha/core";
 import type { MechaId } from "@mecha/core";
 import type { DockerClient } from "../src/client.js";
+
+beforeEach(() => {
+  invalidateCache();
+});
 
 function createMockClient(): DockerClient {
   return {
@@ -361,6 +366,22 @@ describe("inspectContainer", () => {
     await expect(inspectContainer(client, "mecha-mx-test-abc123")).rejects.toThrow(
       ContainerNotFoundError,
     );
+  });
+
+  it("returns cached result on second call within TTL", async () => {
+    const client = createMockClient();
+    const info = { State: { Status: "running" } };
+    const inspectFn = vi.fn().mockResolvedValue(info);
+    (client.docker.getContainer as ReturnType<typeof vi.fn>).mockReturnValue({
+      inspect: inspectFn,
+    });
+
+    const result1 = await inspectContainer(client, "mecha-mx-cached");
+    const result2 = await inspectContainer(client, "mecha-mx-cached");
+
+    expect(result1).toBe(info);
+    expect(result2).toBe(info);
+    expect(inspectFn).toHaveBeenCalledTimes(1);
   });
 
   it("rethrows non-404 errors", async () => {

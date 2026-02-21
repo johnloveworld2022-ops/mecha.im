@@ -4,6 +4,7 @@ import { LABELS, MOUNT_PATHS, SECURITY, DEFAULTS, ContainerNotFoundError } from 
 import type { MechaId } from "@mecha/core";
 import type { DockerClient } from "./client.js";
 import { isNotFoundError } from "./utils.js";
+import { getCached, setCached, invalidateCache } from "./cache.js";
 
 export interface CreateContainerOptions {
   containerName: string;
@@ -21,7 +22,7 @@ export async function createContainer(
   client: DockerClient,
   opts: CreateContainerOptions,
 ): Promise<Dockerode.Container> {
-  return client.docker.createContainer({
+  const container = await client.docker.createContainer({
     name: opts.containerName,
     Image: opts.image,
     ...(opts.cmd ? { Cmd: opts.cmd } : {}),
@@ -56,6 +57,8 @@ export async function createContainer(
     },
     User: `${SECURITY.UID}:${SECURITY.GID}`,
   });
+  invalidateCache(opts.containerName);
+  return container;
 }
 
 /** Get the host port assigned to a running container (from inspect data) */
@@ -87,19 +90,25 @@ export async function getContainerPortAndEnv(
 
 export async function startContainer(client: DockerClient, name: string): Promise<void> {
   await client.docker.getContainer(name).start();
+  invalidateCache(name);
 }
 
 export async function stopContainer(client: DockerClient, name: string, timeout = DEFAULTS.STOP_TIMEOUT_SECONDS): Promise<void> {
   await client.docker.getContainer(name).stop({ t: timeout });
+  invalidateCache(name);
 }
 
 export async function removeContainer(client: DockerClient, name: string, force = false): Promise<void> {
   await client.docker.getContainer(name).remove({ force });
+  invalidateCache(name);
 }
 
 export async function inspectContainer(client: DockerClient, name: string): Promise<Dockerode.ContainerInspectInfo> {
+  const cached = getCached<Dockerode.ContainerInspectInfo>(name);
+  if (cached) return cached;
   try {
-    return await client.docker.getContainer(name).inspect();
+    const info = await client.docker.getContainer(name).inspect();
+    return setCached(name, info);
   } catch (err: unknown) {
     if (isNotFoundError(err)) throw new ContainerNotFoundError(name);
     throw err;

@@ -15,3 +15,4 @@ export {
   execInContainer,
 } from "./container.js";
 export { pullImage, imageExists } from "./image.js";
+export { invalidateCache } from "./cache.js";
