@@ -40,12 +40,17 @@ export function MechaEnv({ mechaId }: { mechaId: string }) {
     return <p style={{ color: "var(--text-muted)", fontSize: "13px" }}>Loading environment...</p>;
   }
 
-  if (error) {
-    return <p style={{ color: "var(--danger)", fontSize: "13px" }}>{error}</p>;
-  }
-
   return (
     <div>
+      {error && (
+        <p style={{ color: "var(--danger)", fontSize: "13px", marginBottom: "8px" }}>
+          {error}
+          <button
+            onClick={() => { setError(""); fetchEnv(); }}
+            style={{ marginLeft: "8px", background: "none", border: "none", color: "var(--accent)", cursor: "pointer", fontSize: "13px" }}
+          >Retry</button>
+        </p>
+      )}
       <label style={{
         display: "flex",
         alignItems: "center",

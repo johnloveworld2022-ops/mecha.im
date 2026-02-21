@@ -1,6 +1,6 @@
 import { NextResponse, type NextRequest } from "next/server";
 import { mechaExec } from "@mecha/service";
-import { MechaExecInput } from "@mecha/contracts";
+import { MechaExecInput, toHttpStatus, toSafeMessage } from "@mecha/contracts";
 import { ContainerNotFoundError } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { withAuth } from "@/lib/api-auth";
@@ -31,6 +31,7 @@ export const POST = withAuth(async (request: NextRequest, { params }) => {
     if (err instanceof ContainerNotFoundError) {
       return NextResponse.json({ error: "Not found" }, { status: 404 });
     }
-    throw err;
+    const status = toHttpStatus(err);
+    return NextResponse.json({ error: toSafeMessage(err) }, { status });
   }
 });

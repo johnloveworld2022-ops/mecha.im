@@ -12,6 +12,7 @@ interface Mecha {
   ports: Array<{ PublicPort?: number }>;
 }
 
+// Mirrors PRUNABLE_STATES in @mecha/service — used for UI-only prunable count
 const PRUNABLE_STATES = new Set(["exited", "dead", "created"]);
 
 export function MechaList() {

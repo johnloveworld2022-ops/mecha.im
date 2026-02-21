@@ -8,16 +8,17 @@ import { withAuth } from "@/lib/api-auth";
 export const POST = withAuth(async (request: NextRequest, { params }) => {
   const { id } = await params;
 
-  let body: { noPull?: boolean } = {};
+  let body: { noPull?: unknown } = {};
   try {
     body = await request.json() as typeof body;
   } catch {
-    // empty body is fine, defaults apply
+    return NextResponse.json({ error: "Invalid JSON" }, { status: 400 });
   }
 
+  const noPull = body.noPull === true;
   const client = getDockerClient();
   try {
-    const result = await mechaUpdate(client, { id, noPull: body.noPull });
+    const result = await mechaUpdate(client, { id, noPull });
     return NextResponse.json(result);
   } catch (err) {
     if (err instanceof ContainerNotFoundError) {

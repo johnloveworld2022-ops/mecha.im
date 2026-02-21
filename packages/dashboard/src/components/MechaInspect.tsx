@@ -9,8 +9,8 @@ export function MechaInspect({ mechaId }: { mechaId: string }) {
   const [error, setError] = useState("");
   const [copied, setCopied] = useState(false);
 
-  const fetchInspect = useCallback(async () => {
-    if (data) {
+  const fetchInspect = useCallback(async (forceRefresh = false) => {
+    if (data && !forceRefresh) {
       setOpen((o) => !o);
       return;
     }
@@ -45,7 +45,7 @@ export function MechaInspect({ mechaId }: { mechaId: string }) {
     <div>
       <div style={{ display: "flex", gap: "8px", alignItems: "center" }}>
         <button
-          onClick={fetchInspect}
+          onClick={() => fetchInspect()}
           disabled={loading}
           style={{
             padding: "4px 10px",
@@ -61,20 +61,37 @@ export function MechaInspect({ mechaId }: { mechaId: string }) {
           {loading ? "Loading..." : open ? "Hide raw JSON" : "Show raw JSON"}
         </button>
         {open && data && (
-          <button
-            onClick={copyToClipboard}
-            style={{
-              padding: "4px 10px",
-              fontSize: "12px",
-              borderRadius: "4px",
-              border: "1px solid var(--border)",
-              backgroundColor: "transparent",
-              color: "var(--text-muted)",
-              cursor: "pointer",
-            }}
-          >
-            {copied ? "Copied!" : "Copy"}
-          </button>
+          <>
+            <button
+              onClick={copyToClipboard}
+              style={{
+                padding: "4px 10px",
+                fontSize: "12px",
+                borderRadius: "4px",
+                border: "1px solid var(--border)",
+                backgroundColor: "transparent",
+                color: "var(--text-muted)",
+                cursor: "pointer",
+              }}
+            >
+              {copied ? "Copied!" : "Copy"}
+            </button>
+            <button
+              onClick={() => fetchInspect(true)}
+              disabled={loading}
+              style={{
+                padding: "4px 10px",
+                fontSize: "12px",
+                borderRadius: "4px",
+                border: "1px solid var(--border)",
+                backgroundColor: "transparent",
+                color: "var(--text-muted)",
+                cursor: loading ? "not-allowed" : "pointer",
+              }}
+            >
+              Refresh
+            </button>
+          </>
         )}
       </div>
       {error && (
