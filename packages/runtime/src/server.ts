@@ -6,6 +6,8 @@ import { registerAgentRoutes, type AgentOptions } from "./agent/casa.js";
 import { registerSessionRoutes } from "./agent/session-routes.js";
 import { SessionManager } from "./agent/session-manager.js";
 import { generateToken, createAuthMiddleware } from "./auth/token.js";
+import { ConfigStore } from "./config/config-store.js";
+import { registerConfigRoutes } from "./config/config-routes.js";
 
 export interface ServerOptions {
   /** Mecha ID for this runtime instance */
@@ -61,6 +63,10 @@ export function createServer(opts: ServerOptions): FastifyInstance {
     // Register routes that return 503 when sessions are unavailable
     registerSessionRoutes(app, undefined);
   }
+
+  // --- config store ---
+  const configStore = opts.db ? new ConfigStore(opts.db) : undefined;
+  registerConfigRoutes(app, configStore);
 
   if (!opts.skipMcp) registerMcpRoutes(app, createMcpServer({ mechaId: opts.mechaId, sessionManager }));
 
