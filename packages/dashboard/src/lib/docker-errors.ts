@@ -2,7 +2,7 @@ import { NextResponse } from "next/server";
 import { ContainerNotFoundError } from "@mecha/core";
 
 export function isConflictError(err: unknown): boolean {
-  return typeof err === "object" && err !== null && "statusCode" in err && (err as { statusCode: number }).statusCode === 304;
+  return typeof err === "object" && err !== null && "statusCode" in err && (err as { statusCode: number }).statusCode === 409;
 }
 
 export function handleDockerError(err: unknown): NextResponse {
