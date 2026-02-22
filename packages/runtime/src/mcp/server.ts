@@ -226,12 +226,16 @@ function registerDefaultTools(mcpServer: McpServer, sessionManager?: SessionMana
     { message: z.string().describe("The message to send to the agent") },
     async ({ message }) => {
       if (!sessionManager) return textContent("Sessions not available", true);
+      let sessionId: string | undefined;
       try {
         const session = sessionManager.create({ title: `MCP chat ${new Date().toISOString()}` });
-        const text = await collectStreamText(sessionManager.sendMessage(session.sessionId, message));
+        sessionId = session.sessionId;
+        const text = await collectStreamText(sessionManager.sendMessage(sessionId, message));
         return textContent(text || "(no response)");
       } catch (err) {
         return textContent(`Chat request failed: ${err instanceof Error ? err.message : String(err)}`, true);
+      } finally {
+        if (sessionId) try { sessionManager.delete(sessionId); } catch { /* best effort */ }
       }
     },
   );

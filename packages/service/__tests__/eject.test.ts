@@ -235,6 +235,49 @@ describe("mechaEject", () => {
     expect(compose).not.toContain("=empty-key");
   });
 
+  it("escapes special characters in env values for YAML and .env", async () => {
+    const env = [
+      "MECHA_ID=mx-test-abc123",
+      'MECHA_AUTH_TOKEN=tok-with"quotes',
+      'MY_VAR=value with spaces and $dollar',
+      "PATH=/usr/bin",
+    ];
+    const info = makeInspectInfo({ projectPath: tempDir, env });
+    mockInspectContainer.mockResolvedValueOnce(info);
+
+    const result = await mechaEject(client, { id: "mx-test-abc123" });
+
+    const dotEnv = readFileSync(result.envPath, "utf-8");
+    // Secret with quotes should be escaped in .env
+    expect(dotEnv).toContain('MECHA_AUTH_TOKEN="tok-with\\"quotes"');
+
+    const compose = readFileSync(result.composePath, "utf-8");
+    // User var with $ should use $$ to escape docker compose substitution
+    expect(compose).toContain('MY_VAR: "value with spaces and $$dollar"');
+  });
+
+  it("throws EjectFileExistsError via wx flag when .env exists (TOCTOU-safe)", async () => {
+    // Write only .env, not compose — tests the .env EEXIST path specifically
+    const info = makeInspectInfo({ projectPath: tempDir });
+    mockInspectContainer.mockResolvedValueOnce(info);
+    // Pre-create .env after compose would be written
+    writeFileSync(join(tempDir, ".env"), "existing");
+
+    await expect(mechaEject(client, { id: "mx-test-abc123" }))
+      .rejects.toThrow(EjectFileExistsError);
+  });
+
+  it("re-throws non-EEXIST errors from compose writeFile", async () => {
+    // Point to a non-existent directory — writeFile will throw ENOENT, not EEXIST
+    const badPath = join(tempDir, "nonexistent-dir");
+    const info = makeInspectInfo({ projectPath: badPath });
+    mockInspectContainer.mockResolvedValueOnce(info);
+
+    await expect(mechaEject(client, { id: "mx-test-abc123" }))
+      .rejects.toThrow(/ENOENT/);
+  });
+
+
   it("includes MECHA_OTP in .env when present", async () => {
     const env = [
       "MECHA_ID=mx-test-abc123",

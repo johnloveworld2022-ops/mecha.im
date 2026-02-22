@@ -158,11 +158,13 @@ describe("MCP tools - mecha_chat", () => {
     expect(result.isError).toBeUndefined();
     expect(sm.create).toHaveBeenCalledOnce();
     expect(sm.sendMessage).toHaveBeenCalledWith("s-new-123", "Hello agent");
+    // Verify session is cleaned up after chat
+    expect(sm.delete).toHaveBeenCalledWith("s-new-123");
 
     await client.close();
   });
 
-  it("returns error when sessionManager throws", async () => {
+  it("returns error when sessionManager throws and still cleans up session", async () => {
     const sm = createMockSessionManager({
       sendMessage: vi.fn().mockReturnValue((async function* () {
         throw new Error("Connection refused");
@@ -180,6 +182,8 @@ describe("MCP tools - mecha_chat", () => {
     expect(content[0]!.text).toContain("Chat request failed:");
     expect(content[0]!.text).toContain("Connection refused");
     expect(result.isError).toBe(true);
+    // Session should still be cleaned up even on error
+    expect(sm.delete).toHaveBeenCalledWith("s-new-123");
 
     await client.close();
   });

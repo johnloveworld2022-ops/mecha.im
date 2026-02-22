@@ -12,6 +12,8 @@ interface SessionPayload {
   iat: number;
   /** Expiry (Unix seconds) */
   exp: number;
+  /** Session version — sessions issued before a logout are rejected */
+  ver?: number;
 }
 
 /**
@@ -20,6 +22,9 @@ interface SessionPayload {
  * since the old in-memory sessions also reset on restart).
  */
 let _ephemeralKey: string | undefined;
+/** Session version — incremented on logout to invalidate all sessions signed before that point */
+let _sessionVersion = 0;
+
 function getSigningKey(): string {
   if (process.env.SESSION_SECRET) return process.env.SESSION_SECRET;
   if (!_ephemeralKey) {
@@ -52,6 +57,7 @@ export function createSession(): string {
     sub: randomBytes(16).toString("hex"),
     iat: now,
     exp: now + SESSION_TTL,
+    ver: _sessionVersion,
   };
   const encoded = Buffer.from(JSON.stringify(payload)).toString("base64url");
   const signature = sign(encoded);
@@ -71,9 +77,9 @@ export function validateSession(sessionValue: string): boolean {
 
   // Verify signature using timing-safe comparison
   const expected = sign(encoded);
-  if (signature.length !== expected.length) return false;
-  const sigBuf = Buffer.from(signature);
-  const expBuf = Buffer.from(expected);
+  const sigBuf = Buffer.from(signature, "base64url");
+  const expBuf = Buffer.from(expected, "base64url");
+  if (sigBuf.length !== expBuf.length) return false;
   if (!timingSafeEqual(sigBuf, expBuf)) return false;
 
   // Decode and check expiry
@@ -81,6 +87,8 @@ export function validateSession(sessionValue: string): boolean {
     const payload = JSON.parse(Buffer.from(encoded, "base64url").toString()) as SessionPayload;
     const now = Math.floor(Date.now() / 1000);
     if (payload.exp <= now) return false;
+    // Reject sessions issued before the last logout (version bump)
+    if ((payload.ver ?? 0) < _sessionVersion) return false;
     return true;
   } catch {
     return false;
@@ -92,7 +100,8 @@ export function validateSession(sessionValue: string): boolean {
  * is simply cleared from the browser). Kept for API compatibility.
  */
 export function deleteSession(_sessionValue: string): void {
-  // Stateless sessions: nothing to delete server-side
+  // Bump session version — all sessions issued before this point become invalid
+  _sessionVersion++;
 }
 
 export async function getSessionFromCookies(): Promise<string | undefined> {

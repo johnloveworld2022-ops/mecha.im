@@ -7,7 +7,14 @@ import type { CommandDeps } from "../types.js";
 import { DEFAULTS } from "@mecha/core";
 
 const require = createRequire(import.meta.url);
-const dashboardRoot = dirname(require.resolve("@mecha/dashboard/package.json"));
+
+function resolveDashboardRoot(): string {
+  try {
+    return dirname(require.resolve("@mecha/dashboard/package.json"));
+  } catch {
+    throw new Error("@mecha/dashboard is not installed. Run 'pnpm install' from the monorepo root.");
+  }
+}
 
 export function registerDashboardCommand(parent: Command, deps: CommandDeps): void {
   parent
@@ -18,7 +25,7 @@ export function registerDashboardCommand(parent: Command, deps: CommandDeps): vo
     .action(async (opts: { port: string; open: boolean }) => {
       const { formatter } = deps;
       const port = opts.port;
-      const dashboardDir = dashboardRoot;
+      const dashboardDir = resolveDashboardRoot();
 
       // Check if dashboard has been built
       if (!existsSync(resolve(dashboardDir, ".next"))) {
