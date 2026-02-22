@@ -198,22 +198,20 @@ const MessageError: FC = () => {
 const AssistantMessage: FC = () => {
   return (
     <MessagePrimitive.Root
-      className="aui-assistant-message-root fade-in slide-in-from-bottom-1 mx-auto grid w-full max-w-(--thread-max-width) animate-in auto-rows-auto grid-cols-[auto_minmax(72px,1fr)] content-start gap-y-2 px-2 py-3 duration-150 [&:where(>*)]:col-start-2"
+      className="aui-assistant-message-root fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--thread-max-width) animate-in flex-col items-end px-2 py-3 pl-16 duration-150"
       data-role="assistant"
     >
-      <div className="aui-assistant-message-content-wrapper relative col-start-2 min-w-0">
-        <div className="aui-assistant-message-content wrap-break-word rounded-2xl bg-accent px-4 py-2.5 text-foreground leading-relaxed">
-          <MessagePrimitive.Parts
-            components={{
-              Text: MarkdownText,
-              tools: { Fallback: ToolFallback },
-            }}
-          />
-          <MessageError />
-        </div>
+      <div className="aui-assistant-message-content wrap-break-word rounded-2xl bg-accent px-4 py-2.5 text-foreground leading-relaxed">
+        <MessagePrimitive.Parts
+          components={{
+            Text: MarkdownText,
+            tools: { Fallback: ToolFallback },
+          }}
+        />
+        <MessageError />
       </div>
 
-      <div className="aui-assistant-message-footer col-span-full col-start-1 row-start-2 mt-1 flex justify-end pr-2">
+      <div className="aui-assistant-message-footer mt-1 flex pr-2">
         <BranchPicker />
         <AssistantActionBar />
       </div>
@@ -273,12 +271,12 @@ const AssistantActionBar: FC = () => {
 const UserMessage: FC = () => {
   return (
     <MessagePrimitive.Root
-      className="aui-user-message-root fade-in slide-in-from-bottom-1 mx-auto grid w-full max-w-(--thread-max-width) animate-in auto-rows-auto grid-cols-[auto_minmax(72px,1fr)] content-start gap-y-2 px-2 py-3 duration-150 [&:where(>*)]:col-start-1"
+      className="aui-user-message-root fade-in slide-in-from-bottom-1 mx-auto flex w-full max-w-(--thread-max-width) animate-in flex-col items-start px-2 py-3 pr-16 duration-150"
       data-role="user"
     >
       <UserMessageAttachments />
 
-      <div className="aui-user-message-content-wrapper relative col-start-1 min-w-0">
+      <div className="aui-user-message-content-wrapper relative">
         <div className="aui-user-message-content wrap-break-word rounded-2xl bg-muted px-4 py-2.5 text-foreground">
           <MessagePrimitive.Parts />
         </div>
@@ -287,7 +285,7 @@ const UserMessage: FC = () => {
         </div>
       </div>
 
-      <BranchPicker className="aui-user-branch-picker col-span-full col-start-1 row-start-3 -ml-1 justify-start" />
+      <BranchPicker className="aui-user-branch-picker -ml-1" />
     </MessagePrimitive.Root>
   );
 };
