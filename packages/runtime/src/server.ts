@@ -4,7 +4,7 @@ import type Database from "better-sqlite3";
 import { createMcpServer, registerMcpRoutes } from "./mcp/server.js";
 import { registerAgentRoutes, type AgentOptions } from "./agent/casa.js";
 import { registerSessionRoutes } from "./agent/session-routes.js";
-import { SessionManager } from "./agent/session-manager.js";
+import { SessionManager, resolveProjectDir } from "./agent/session-manager.js";
 import { generateToken, createAuthMiddleware } from "./auth/token.js";
 import { ConfigStore } from "./config/config-store.js";
 import { registerConfigRoutes } from "./config/config-routes.js";
@@ -56,7 +56,9 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   if (opts.db && agentOpts) {
     sessionManager = new SessionManager(opts.db, agentOpts);
     sessionManager.resetBusySessions();
-    registerSessionRoutes(app, sessionManager);
+    const projectDir = resolveProjectDir(agentOpts.workingDirectory ?? "/home/mecha");
+    sessionManager.importTranscripts(projectDir);
+    registerSessionRoutes(app, sessionManager, projectDir);
     sessionManager.startCleanup();
     app.addHook("onClose", async () => sessionManager!.shutdown());
   } else {

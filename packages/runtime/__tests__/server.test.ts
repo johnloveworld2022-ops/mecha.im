@@ -136,6 +136,21 @@ describe("Fastify server", () => {
     expect(res.statusCode).not.toBe(503);
   });
 
+  it("creates server with agent but no workingDirectory (uses /home/mecha fallback)", async () => {
+    const { createDatabase, runMigrations } = await import("../src/db/sqlite.js");
+    const testDb = createDatabase(":memory:");
+    runMigrations(testDb);
+    app = createServer({
+      mechaId: TEST_ID,
+      skipMcp: true,
+      skipAuth: true,
+      db: testDb,
+      agent: { permissionMode: "default" as const },
+    });
+    const res = await app.inject({ method: "GET", url: "/api/sessions" });
+    expect(res.statusCode).toBe(200);
+  });
+
   it("uses default version when version is omitted", async () => {
     app = createServer({ mechaId: TEST_ID, skipMcp: true, skipAuth: true });
     const res = await app.inject({ method: "GET", url: "/info" });

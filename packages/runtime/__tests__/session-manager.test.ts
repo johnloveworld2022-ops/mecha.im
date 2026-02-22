@@ -1,7 +1,10 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type Database from "better-sqlite3";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createDatabase, runMigrations } from "../src/db/sqlite.js";
-import { SessionManager, MAX_SESSIONS } from "../src/agent/session-manager.js";
+import { SessionManager, MAX_SESSIONS, resolveProjectDir } from "../src/agent/session-manager.js";
 import type { MechaId } from "@mecha/core";
 import {
   SessionNotFoundError,
@@ -718,5 +721,228 @@ describe("SessionManager", () => {
     for (const s of sessions) {
       expect(s.state).toBe("idle");
     }
+  });
+
+  // --- importTranscripts ---
+
+  describe("importTranscripts", () => {
+    function makeTmpDir(): string {
+      return mkdtempSync(join(tmpdir(), "mecha-import-test-"));
+    }
+
+    function writeJsonl(dir: string, filename: string, lines: unknown[]): void {
+      writeFileSync(join(dir, filename), lines.map((l) => JSON.stringify(l)).join("\n"));
+    }
+
+    it("imports JSONL transcripts as sessions with correct messages", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-session-1.jsonl", [
+        { type: "user", message: { content: "Hello world" }, sessionId: "sdk-session-1", timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "Hi there!" }] }, sessionId: "sdk-session-1", timestamp: "2024-06-01T10:00:05Z" },
+        { type: "user", message: { content: "How are you?" }, sessionId: "sdk-session-1", timestamp: "2024-06-01T10:00:10Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "I'm well!" }] }, sessionId: "sdk-session-1", timestamp: "2024-06-01T10:00:15Z" },
+      ]);
+
+      const imported = sm.importTranscripts(dir);
+      expect(imported).toBe(1);
+
+      const sessions = sm.list();
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].title).toBe("Hello world");
+      expect(sessions[0].messageCount).toBe(4);
+
+      const detail = sm.get(sessions[0].sessionId);
+      expect(detail?.messages[0].role).toBe("user");
+      expect(detail?.messages[0].content).toBe("Hello world");
+      expect(detail?.messages[1].role).toBe("assistant");
+      expect(detail?.messages[1].content).toBe("Hi there!");
+      expect(detail?.messages[2].role).toBe("user");
+      expect(detail?.messages[2].content).toBe("How are you?");
+      expect(detail?.messages[3].role).toBe("assistant");
+      expect(detail?.messages[3].content).toBe("I'm well!");
+    });
+
+    it("is idempotent — second import returns 0", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-idem.jsonl", [
+        { type: "user", message: { content: "test" }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      expect(sm.importTranscripts(dir)).toBe(1);
+      expect(sm.importTranscripts(dir)).toBe(0);
+      expect(sm.list()).toHaveLength(1);
+    });
+
+    it("skips files with no user/assistant messages", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-empty.jsonl", [
+        { type: "queue-operation", timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      expect(sm.importTranscripts(dir)).toBe(0);
+      expect(sm.list()).toHaveLength(0);
+    });
+
+    it("truncates title to 50 chars", () => {
+      const dir = makeTmpDir();
+      const longMessage = "A".repeat(100);
+      writeJsonl(dir, "sdk-long.jsonl", [
+        { type: "user", message: { content: longMessage }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].title).toBe("A".repeat(50));
+    });
+
+    it("preserves timestamps from JSONL", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-ts.jsonl", [
+        { type: "user", message: { content: "hello" }, timestamp: "2024-03-15T14:30:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "hi" }] }, timestamp: "2024-03-15T14:30:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].createdAt).toBe("2024-03-15 14:30:00");
+      expect(sessions[0].lastMessageAt).toBe("2024-03-15 14:30:05");
+    });
+
+    it("returns 0 for nonexistent directory", () => {
+      expect(sm.importTranscripts("/nonexistent/path/to/nowhere")).toBe(0);
+    });
+
+    it("skips non-jsonl files", () => {
+      const dir = makeTmpDir();
+      writeFileSync(join(dir, "notes.txt"), "not a transcript");
+      writeJsonl(dir, "sdk-real.jsonl", [
+        { type: "user", message: { content: "real" }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      expect(sm.importTranscripts(dir)).toBe(1);
+      expect(sm.list()).toHaveLength(1);
+    });
+
+    it("imports multiple files", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-a.jsonl", [
+        { type: "user", message: { content: "first chat" }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+      writeJsonl(dir, "sdk-b.jsonl", [
+        { type: "user", message: { content: "second chat" }, timestamp: "2024-06-02T10:00:00Z" },
+      ]);
+
+      expect(sm.importTranscripts(dir)).toBe(2);
+      expect(sm.list()).toHaveLength(2);
+    });
+
+    it("skips assistant messages with empty text blocks", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-empty-text.jsonl", [
+        { type: "user", message: { content: "hi" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "" }] }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].messageCount).toBe(1); // only user message
+    });
+
+    it("skips malformed JSON lines gracefully", () => {
+      const dir = makeTmpDir();
+      writeFileSync(join(dir, "sdk-bad.jsonl"), [
+        '{"type":"user","message":{"content":"good"},"timestamp":"2024-06-01T10:00:00Z"}',
+        "not valid json {{{",
+        '{"type":"assistant","message":{"content":[{"type":"text","text":"ok"}]},"timestamp":"2024-06-01T10:00:05Z"}',
+      ].join("\n"));
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].messageCount).toBe(2);
+    });
+
+    it("skips queue-operation type messages", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-queue.jsonl", [
+        { type: "user", message: { content: "hello" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "queue-operation", timestamp: "2024-06-01T10:00:01Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "world" }] }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const detail = sm.get(sm.list()[0].sessionId);
+      expect(detail?.messages).toHaveLength(2);
+      expect(detail?.messages[0].content).toBe("hello");
+      expect(detail?.messages[1].content).toBe("world");
+    });
+
+    it("handles assistant messages with non-array content", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-noarr.jsonl", [
+        { type: "user", message: { content: "test" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: "string-not-array" }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      expect(sm.list()[0].messageCount).toBe(1); // only user message
+    });
+
+    it("falls back to current time when timestamp is missing", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-nots.jsonl", [
+        { type: "user", message: { content: "no timestamp" } },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions).toHaveLength(1);
+      expect(sessions[0].createdAt).toBeDefined();
+    });
+
+    it("skips user messages with non-string content", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-baduser.jsonl", [
+        { type: "user", message: { content: 123 }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "user", message: { content: "real" }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      expect(sm.list()[0].messageCount).toBe(1);
+      expect(sm.get(sm.list()[0].sessionId)?.messages[0].content).toBe("real");
+    });
+
+    it("uses empty title when only assistant messages exist", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-nouser.jsonl", [
+        { type: "assistant", message: { content: [{ type: "text", text: "unsolicited" }] }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      expect(sm.list()[0].title).toBe("");
+    });
+  });
+});
+
+// --- resolveProjectDir ---
+
+describe("resolveProjectDir", () => {
+  it("converts /home/mecha to SDK project dir", () => {
+    expect(resolveProjectDir("/home/mecha")).toBe("/home/mecha/.claude/projects/home-mecha");
+  });
+
+  it("handles root path", () => {
+    expect(resolveProjectDir("/")).toBe("/.claude/projects");
+  });
+
+  it("strips leading dash from slug", () => {
+    // "/home/mecha" → slug should be "home-mecha" not "-home-mecha"
+    const result = resolveProjectDir("/home/mecha");
+    expect(result).not.toContain("/-home-mecha");
+  });
+
+  it("handles nested paths", () => {
+    expect(resolveProjectDir("/home/user/projects/myapp")).toBe(
+      "/home/user/projects/myapp/.claude/projects/home-user-projects-myapp",
+    );
   });
 });

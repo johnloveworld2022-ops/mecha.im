@@ -1,6 +1,12 @@
 import { describe, it, expect, afterEach, vi } from "vitest";
+import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { join } from "node:path";
+import { tmpdir } from "node:os";
 import { createServer } from "../src/server.js";
 import { createDatabase, runMigrations } from "../src/db/sqlite.js";
+import { SessionManager, resolveProjectDir } from "../src/agent/session-manager.js";
+import { registerSessionRoutes } from "../src/agent/session-routes.js";
+import Fastify from "fastify";
 import type { MechaId } from "@mecha/core";
 import type Database from "better-sqlite3";
 
@@ -586,11 +592,99 @@ describe("Session routes", () => {
       { method: "POST" as const, url: "/api/sessions/some-id/message", payload: { message: "hi" } },
       { method: "POST" as const, url: "/api/sessions/some-id/interrupt" },
       { method: "PUT" as const, url: "/api/sessions/some-id/config", payload: { maxTurns: 5 } },
+      { method: "POST" as const, url: "/api/sessions/import" },
     ];
 
     for (const route of routes) {
       const res = await app.inject(route);
       expect(res.statusCode).toBe(503);
     }
+  });
+
+  // --- POST /api/sessions/import ---
+
+  it("POST /api/sessions/import imports JSONL transcripts", async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), "mecha-route-test-"));
+    const projectDir = resolveProjectDir(tmpBase);
+    mkdirSync(projectDir, { recursive: true });
+
+    writeFileSync(join(projectDir, "sdk-route-test.jsonl"), [
+      JSON.stringify({ type: "user", message: { content: "route test" }, timestamp: "2024-06-01T10:00:00Z" }),
+      JSON.stringify({ type: "assistant", message: { content: [{ type: "text", text: "reply" }] }, timestamp: "2024-06-01T10:00:05Z" }),
+    ].join("\n"));
+
+    const testDb = createDatabase(":memory:");
+    runMigrations(testDb);
+    app = createServer({
+      mechaId: TEST_ID,
+      skipMcp: true,
+      skipAuth: true,
+      db: testDb,
+      agent: { workingDirectory: tmpBase, permissionMode: "default" as const },
+    });
+    db = testDb;
+
+    // The startup import should have already imported it
+    const listRes = await app.inject({ method: "GET", url: "/api/sessions" });
+    const sessions = JSON.parse(listRes.body);
+    expect(sessions.length).toBeGreaterThanOrEqual(1);
+
+    // Calling import again should return 0 (idempotent)
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions/import",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).imported).toBe(0);
+  });
+
+  it("POST /api/sessions/import returns imported count for new files", async () => {
+    const tmpBase = mkdtempSync(join(tmpdir(), "mecha-route-test2-"));
+
+    const testDb = createDatabase(":memory:");
+    runMigrations(testDb);
+    app = createServer({
+      mechaId: TEST_ID,
+      skipMcp: true,
+      skipAuth: true,
+      db: testDb,
+      agent: { workingDirectory: tmpBase, permissionMode: "default" as const },
+    });
+    db = testDb;
+
+    // Now create the project dir and add a transcript after server startup
+    const projectDir = resolveProjectDir(tmpBase);
+    mkdirSync(projectDir, { recursive: true });
+    writeFileSync(join(projectDir, "sdk-new.jsonl"), [
+      JSON.stringify({ type: "user", message: { content: "new transcript" }, timestamp: "2024-06-01T10:00:00Z" }),
+    ].join("\n"));
+
+    const res = await app.inject({
+      method: "POST",
+      url: "/api/sessions/import",
+    });
+
+    expect(res.statusCode).toBe(200);
+    expect(JSON.parse(res.body).imported).toBe(1);
+  });
+
+  it("POST /api/sessions/import returns 400 when no projectDir configured", async () => {
+    const testDb = createDatabase(":memory:");
+    runMigrations(testDb);
+    const sm = new SessionManager(testDb, { mechaId: TEST_ID, workingDirectory: "/tmp" });
+    const directApp = Fastify();
+    // Register with sessionManager but no projectDir
+    registerSessionRoutes(directApp, sm);
+
+    const res = await directApp.inject({
+      method: "POST",
+      url: "/api/sessions/import",
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toContain("No project directory");
+    await directApp.close();
+    testDb.close();
   });
 });

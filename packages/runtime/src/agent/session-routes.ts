@@ -11,6 +11,7 @@ import {
 export function registerSessionRoutes(
   app: FastifyInstance,
   sessionManager: SessionManager | undefined,
+  projectDir?: string,
 ): void {
   // If no session manager, all routes return 503
   if (!sessionManager) {
@@ -23,10 +24,18 @@ export function registerSessionRoutes(
     app.post("/api/sessions/:id/message", unavailable);
     app.post("/api/sessions/:id/interrupt", unavailable);
     app.put("/api/sessions/:id/config", unavailable);
+    app.post("/api/sessions/import", unavailable);
     return;
   }
 
   const sm = sessionManager;
+
+  // POST /api/sessions/import — import JSONL transcripts
+  app.post("/api/sessions/import", async (_req, reply) => {
+    if (!projectDir) return reply.code(400).send({ error: "No project directory configured" });
+    const imported = sm.importTranscripts(projectDir);
+    return reply.send({ imported });
+  });
 
   // POST /api/sessions — create session
   app.post("/api/sessions", async (req, reply) => {

@@ -1,5 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
+import { readdirSync, readFileSync } from "node:fs";
+import { join } from "node:path";
 import type { AgentOptions } from "./casa.js";
 import { PERMISSION_MAP } from "./casa.js";
 import type { SessionConfigType } from "@mecha/contracts";
@@ -8,6 +10,15 @@ import {
   SessionBusyError,
   SessionCapReachedError,
 } from "@mecha/contracts";
+
+/**
+ * Converts a working directory to the SDK project directory path.
+ * e.g. "/home/mecha" → "/home/mecha/.claude/projects/-home-mecha"
+ */
+export function resolveProjectDir(cwd: string): string {
+  const slug = cwd.replace(/\//g, "-").replace(/^-/, "");
+  return join(cwd, ".claude", "projects", slug);
+}
 
 export const MAX_SESSIONS = 50;
 export const SESSION_TTL_MS = 3_600_000; // 1 hour
@@ -269,6 +280,85 @@ export class SessionManager {
 
   resetBusySessions(): void {
     this.db.prepare("UPDATE sessions SET state = 'idle' WHERE state = 'busy'").run();
+  }
+
+  importTranscripts(projectDir: string): number {
+    let files: string[];
+    try {
+      files = readdirSync(projectDir).filter((f) => f.endsWith(".jsonl"));
+    } catch {
+      return 0; // directory doesn't exist yet
+    }
+
+    const checkExists = this.db.prepare("SELECT id FROM sessions WHERE sdk_session_id = ?");
+    const insertSession = this.db.prepare(
+      "INSERT INTO sessions (id, sdk_session_id, title, config, created_at, updated_at, last_message_at) VALUES (?, ?, ?, '{}', ?, ?, ?)",
+    );
+    const insertMessage = this.db.prepare(
+      "INSERT INTO session_messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+    );
+
+    let imported = 0;
+
+    for (const file of files) {
+      const sdkSessionId = file.slice(0, -6); // strip .jsonl
+
+      if (checkExists.get(sdkSessionId)) continue;
+
+      const lines = readFileSync(join(projectDir, file), "utf-8")
+        .split("\n")
+        .filter((l) => l.trim());
+
+      const messages: Array<{ role: "user" | "assistant"; content: string; timestamp: string }> = [];
+
+      for (const line of lines) {
+        let parsed: Record<string, unknown>;
+        try {
+          parsed = JSON.parse(line);
+        } catch {
+          continue;
+        }
+
+        const timestamp = (parsed.timestamp as string) ?? new Date().toISOString();
+        const msg = parsed.message as Record<string, unknown> | undefined;
+
+        if (parsed.type === "user" && msg) {
+          const content = typeof msg.content === "string" ? msg.content : "";
+          if (content) messages.push({ role: "user", content, timestamp });
+        } else if (parsed.type === "assistant" && msg) {
+          const contentArr = msg.content as Array<Record<string, unknown>> | undefined;
+          if (Array.isArray(contentArr)) {
+            const text = contentArr
+              .filter((b) => b.type === "text" && typeof b.text === "string" && (b.text as string).length > 0)
+              .map((b) => b.text as string)
+              .join("");
+            if (text) messages.push({ role: "assistant", content: text, timestamp });
+          }
+        }
+      }
+
+      if (messages.length === 0) continue;
+
+      const id = randomUUID();
+      const title = messages.find((m) => m.role === "user")?.content.slice(0, 50) ?? "";
+      const firstTimestamp = messages[0].timestamp;
+      const lastTimestamp = messages[messages.length - 1].timestamp;
+      // Convert ISO timestamps to SQLite datetime format
+      const createdAt = firstTimestamp.replace("T", " ").slice(0, 19);
+      const lastMessageAt = lastTimestamp.replace("T", " ").slice(0, 19);
+
+      const insertAll = this.db.transaction(() => {
+        insertSession.run(id, sdkSessionId, title, createdAt, createdAt, lastMessageAt);
+        for (const m of messages) {
+          const ts = m.timestamp.replace("T", " ").slice(0, 19);
+          insertMessage.run(id, m.role, m.content, ts);
+        }
+      });
+      insertAll.immediate();
+      imported++;
+    }
+
+    return imported;
   }
 
   startCleanup(): void {
