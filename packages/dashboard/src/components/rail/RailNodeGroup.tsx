@@ -27,20 +27,29 @@ export function RailNodeGroup({
   collapsed,
   onToggleCollapse,
 }: RailNodeGroupProps) {
+  const anyRunning = mechas.some((m) => m.state === "running");
+  const isActive = mechas.some((m) => m.id === selectedMechaId);
+
   return (
     <div className="flex flex-col items-center gap-1">
-      {/* Node header — large collapsible button */}
+      {/* Node icon */}
       <Tooltip>
         <TooltipTrigger asChild>
           <button
             onClick={onToggleCollapse}
-            className="relative flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+            className={cn(
+              "relative flex size-9 items-center justify-center transition-all",
+              isActive
+                ? "text-primary"
+                : anyRunning
+                  ? "text-foreground"
+                  : "text-muted-foreground",
+            )}
           >
             <MonitorIcon className="size-5" />
-            {/* Collapse indicator */}
             <ChevronDownIcon
               className={cn(
-                "absolute -bottom-0.5 left-1/2 -translate-x-1/2 size-2.5 text-muted-foreground transition-transform",
+                "absolute -bottom-1 left-1/2 -translate-x-1/2 size-2.5 text-muted-foreground transition-transform",
                 collapsed && "-rotate-90",
               )}
             />
@@ -52,7 +61,7 @@ export function RailNodeGroup({
         </TooltipContent>
       </Tooltip>
 
-      {/* CASA icons — smaller, nested */}
+      {/* CASA icons */}
       {!collapsed && (
         <div className="flex flex-col items-center gap-1">
           {mechas.map((m) => (
