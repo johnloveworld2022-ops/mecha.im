@@ -138,6 +138,47 @@ export class SessionManager {
     }));
   }
 
+  rename(id: string, title: string): SessionSummary {
+    const trimmed = title.trim().slice(0, 200);
+
+    const doRename = this.db.transaction(() => {
+      const row = this.db.prepare(
+        "SELECT id, title, state, created_at, last_message_at, (SELECT COUNT(*) FROM session_messages WHERE session_id = sessions.id) as message_count FROM sessions WHERE id = ?",
+      ).get(id) as {
+        id: string; title: string; state: string; created_at: string;
+        last_message_at: string | null; message_count: number;
+      } | undefined;
+      if (!row) throw new SessionNotFoundError(id);
+
+      // Empty string after trim → no-op, return current session
+      if (!trimmed) {
+        return {
+          sessionId: row.id,
+          title: row.title,
+          state: row.state as "idle" | "busy",
+          messageCount: row.message_count,
+          lastMessageAt: row.last_message_at,
+          createdAt: row.created_at,
+        } as SessionSummary;
+      }
+
+      this.db.prepare(
+        "UPDATE sessions SET title = ?, updated_at = datetime('now') WHERE id = ?",
+      ).run(trimmed, id);
+
+      return {
+        sessionId: row.id,
+        title: trimmed,
+        state: row.state as "idle" | "busy",
+        messageCount: row.message_count,
+        lastMessageAt: row.last_message_at,
+        createdAt: row.created_at,
+      } as SessionSummary;
+    });
+
+    return doRename.immediate();
+  }
+
   delete(id: string): boolean {
     // If session is active/busy, abort first
     const entry = this.active.get(id);

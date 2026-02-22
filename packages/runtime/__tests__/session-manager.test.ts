@@ -144,6 +144,50 @@ describe("SessionManager", () => {
     expect(sm.get(session.sessionId)).toBeUndefined();
   });
 
+  // --- rename ---
+
+  it("rename() updates title and returns updated summary", () => {
+    const session = sm.create({ title: "Old Title" });
+    const result = sm.rename(session.sessionId, "New Title");
+    expect(result.title).toBe("New Title");
+    expect(result.sessionId).toBe(session.sessionId);
+
+    // Verify persistence
+    const fromDb = sm.get(session.sessionId);
+    expect(fromDb?.title).toBe("New Title");
+  });
+
+  it("rename() throws SessionNotFoundError for nonexistent session", () => {
+    expect(() => sm.rename("no-such-id", "Title")).toThrow(SessionNotFoundError);
+  });
+
+  it("rename() with empty string after trim is a no-op", () => {
+    const session = sm.create({ title: "Keep Me" });
+    const result = sm.rename(session.sessionId, "   ");
+    expect(result.title).toBe("Keep Me");
+  });
+
+  it("rename() truncates title to 200 chars", () => {
+    const session = sm.create();
+    const longTitle = "A".repeat(300);
+    const result = sm.rename(session.sessionId, longTitle);
+    expect(result.title).toBe("A".repeat(200));
+  });
+
+  it("rename() works on busy session", () => {
+    const session = sm.create({ title: "Original" });
+    db.prepare("UPDATE sessions SET state = 'busy' WHERE id = ?").run(session.sessionId);
+    const result = sm.rename(session.sessionId, "Renamed While Busy");
+    expect(result.title).toBe("Renamed While Busy");
+    expect(result.state).toBe("busy");
+  });
+
+  it("rename() trims whitespace", () => {
+    const session = sm.create();
+    const result = sm.rename(session.sessionId, "  Trimmed Title  ");
+    expect(result.title).toBe("Trimmed Title");
+  });
+
   // --- sendMessage ---
 
   it("sendMessage() idle to busy to idle transition", async () => {

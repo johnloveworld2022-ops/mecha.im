@@ -233,6 +233,70 @@ describe("Session routes", () => {
     expect(res.statusCode).toBe(404);
   });
 
+  // --- PATCH /api/sessions/:id ---
+
+  it("PATCH /api/sessions/:id renames session", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: { title: "Original" },
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/sessions/${sessionId}`,
+      payload: { title: "Renamed" },
+    });
+
+    expect(res.statusCode).toBe(200);
+    const body = JSON.parse(res.body);
+    expect(body.title).toBe("Renamed");
+    expect(body.sessionId).toBe(sessionId);
+  });
+
+  it("PATCH /api/sessions/:id missing title returns 400", async () => {
+    ({ app, db } = createTestApp());
+    const createRes = await app.inject({
+      method: "POST",
+      url: "/api/sessions",
+      payload: {},
+    });
+    const { sessionId } = JSON.parse(createRes.body);
+
+    const res = await app.inject({
+      method: "PATCH",
+      url: `/api/sessions/${sessionId}`,
+      payload: {},
+    });
+
+    expect(res.statusCode).toBe(400);
+    expect(JSON.parse(res.body).error).toContain("title");
+  });
+
+  it("PATCH /api/sessions/:id nonexistent returns 404", async () => {
+    ({ app, db } = createTestApp());
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/sessions/nonexistent-id",
+      payload: { title: "New" },
+    });
+
+    expect(res.statusCode).toBe(404);
+  });
+
+  it("PATCH /api/sessions/:id returns 503 when no agent configured", async () => {
+    ({ app, db } = createTestApp({ withAgent: false, withDb: false }));
+    const res = await app.inject({
+      method: "PATCH",
+      url: "/api/sessions/some-id",
+      payload: { title: "New" },
+    });
+
+    expect(res.statusCode).toBe(503);
+  });
+
   // --- POST /api/sessions/:id/message ---
 
   it("POST /api/sessions/:id/message missing message returns 400", async () => {
@@ -589,6 +653,7 @@ describe("Session routes", () => {
       { method: "GET" as const, url: "/api/sessions" },
       { method: "GET" as const, url: "/api/sessions/some-id" },
       { method: "DELETE" as const, url: "/api/sessions/some-id" },
+      { method: "PATCH" as const, url: "/api/sessions/some-id", payload: { title: "New" } },
       { method: "POST" as const, url: "/api/sessions/some-id/message", payload: { message: "hi" } },
       { method: "POST" as const, url: "/api/sessions/some-id/interrupt" },
       { method: "PUT" as const, url: "/api/sessions/some-id/config", payload: { maxTurns: 5 } },

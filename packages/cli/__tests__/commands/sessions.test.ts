@@ -8,12 +8,14 @@ const mockMechaSessionList = vi.fn();
 const mockMechaSessionGet = vi.fn();
 const mockMechaSessionDelete = vi.fn();
 const mockMechaSessionInterrupt = vi.fn();
+const mockMechaSessionRename = vi.fn();
 
 vi.mock("@mecha/service", () => ({
   mechaSessionList: (...args: unknown[]) => mockMechaSessionList(...args),
   mechaSessionGet: (...args: unknown[]) => mockMechaSessionGet(...args),
   mechaSessionDelete: (...args: unknown[]) => mockMechaSessionDelete(...args),
   mechaSessionInterrupt: (...args: unknown[]) => mockMechaSessionInterrupt(...args),
+  mechaSessionRename: (...args: unknown[]) => mockMechaSessionRename(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -219,6 +221,35 @@ describe("mecha sessions", () => {
     await program.parseAsync(["sessions", "interrupt", "mx-test", "sess-int"], { from: "user" });
 
     expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("interrupt failed"));
+    expect(process.exitCode).toBe(1);
+  });
+
+  // --- sessions rename ---
+
+  it("sessions rename calls mechaSessionRename and shows success", async () => {
+    mockMechaSessionRename.mockResolvedValueOnce({
+      sessionId: "sess-ren",
+      title: "New Title",
+      state: "idle",
+      messageCount: 3,
+      lastMessageAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+    });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "rename", "mx-test", "sess-ren", "New Title"], { from: "user" });
+
+    expect(mockMechaSessionRename).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test", sessionId: "sess-ren", title: "New Title" });
+    expect(formatter.success).toHaveBeenCalledWith('Session sess-ren renamed to "New Title"');
+  });
+
+  it("sessions rename reports error on failure", async () => {
+    mockMechaSessionRename.mockRejectedValueOnce(new Error("rename failed"));
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "rename", "mx-test", "sess-ren", "Title"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("rename failed"));
     expect(process.exitCode).toBe(1);
   });
 });

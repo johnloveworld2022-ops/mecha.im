@@ -27,5 +27,7 @@ export {
   mechaSessionMessage,
   mechaSessionInterrupt,
   mechaSessionConfigUpdate,
+  mechaSessionRename,
+  mechaSessionImport,
   mechaEject,
 } from "./service.js";

@@ -24,6 +24,7 @@ export function registerSessionRoutes(
     app.post("/api/sessions/:id/message", unavailable);
     app.post("/api/sessions/:id/interrupt", unavailable);
     app.put("/api/sessions/:id/config", unavailable);
+    app.patch("/api/sessions/:id", unavailable);
     app.post("/api/sessions/import", unavailable);
     return;
   }
@@ -84,6 +85,21 @@ export function registerSessionRoutes(
       return reply.code(404).send({ error: `Session not found: ${id}` });
     }
     return reply.code(204).send();
+  });
+
+  // PATCH /api/sessions/:id — rename session
+  app.patch("/api/sessions/:id", async (req, reply) => {
+    const { id } = req.params as { id: string };
+    const body = req.body as { title?: string } | null;
+    if (!body || typeof body.title !== "string" || !body.title.trim()) {
+      return reply.code(400).send({ error: "Missing 'title' field" });
+    }
+    try {
+      const session = sm.rename(id, body.title);
+      return reply.send(session);
+    } catch (err) {
+      return reply.code(toHttpStatus(err)).send({ error: toSafeMessage(err) });
+    }
   });
 
   // POST /api/sessions/:id/message — send message (SSE stream)

@@ -5,6 +5,7 @@ import {
   mechaSessionGet,
   mechaSessionDelete,
   mechaSessionInterrupt,
+  mechaSessionRename,
 } from "@mecha/service";
 import { toUserMessage, toExitCode } from "@mecha/contracts";
 
@@ -106,6 +107,20 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
         } else {
           formatter.info(`Session ${sessionId} was not busy`);
         }
+      } catch (err) {
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
+      }
+    });
+
+  sessions
+    .command("rename <id> <sessionId> <title>")
+    .description("Rename a session")
+    .action(async (id: string, sessionId: string, title: string) => {
+      const { dockerClient, formatter } = deps;
+      try {
+        const result = await mechaSessionRename(dockerClient, { id, sessionId, title }) as SessionSummary;
+        formatter.success(`Session ${sessionId} renamed to "${result.title}"`);
       } catch (err) {
         formatter.error(toUserMessage(err));
         process.exitCode = toExitCode(err);

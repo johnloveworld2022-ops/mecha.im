@@ -192,6 +192,11 @@ export const SessionConfigUpdateInput = SessionRef.extend({
 });
 export type SessionConfigUpdateInput = z.infer<typeof SessionConfigUpdateInput>;
 
+export const SessionRenameInput = SessionRef.extend({
+  title: z.string().min(1).max(200),
+});
+export type SessionRenameInput = z.infer<typeof SessionRenameInput>;
+
 export const SessionListInput = z.object({
   id: z.string().min(1),
 });

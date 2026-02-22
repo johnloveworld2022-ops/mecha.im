@@ -44,6 +44,7 @@ interface DashboardState {
   setSessions: (mechaId: string, s: Session[]) => void;
   addSession: (mechaId: string, s: Session) => void;
   removeSession: (mechaId: string, sessionId: string) => void;
+  updateSession: (mechaId: string, sessionId: string, updates: Partial<Pick<Session, "title">>) => void;
 
   // Selected session
   selectedSessionId: string | null;
@@ -100,6 +101,15 @@ export const useDashboardStore = create<DashboardState>()(
             ...s.sessions,
             [mechaId]: (s.sessions[mechaId] ?? []).filter(
               (sess) => sess.sessionId !== sessionId,
+            ),
+          },
+        })),
+      updateSession: (mechaId, sessionId, updates) =>
+        set((s) => ({
+          sessions: {
+            ...s.sessions,
+            [mechaId]: (s.sessions[mechaId] ?? []).map(
+              (sess) => sess.sessionId === sessionId ? { ...sess, ...updates } : sess,
             ),
           },
         })),

@@ -7,6 +7,7 @@ import type {
   SessionMessageInputType,
   SessionInterruptInputType,
   SessionConfigUpdateInputType,
+  SessionRenameInputType,
 } from "@mecha/contracts";
 import { runtimeFetch } from "./helpers.js";
 
@@ -78,6 +79,32 @@ export async function mechaSessionInterrupt(
     sessionId: input.sessionId,
   });
   return res.json() as Promise<{ interrupted: boolean }>;
+}
+
+// --- mechaSessionRename ---
+export async function mechaSessionRename(
+  client: DockerClient,
+  input: SessionRenameInputType,
+): Promise<unknown> {
+  const sid = encodeURIComponent(input.sessionId);
+  const res = await runtimeFetch(client, input.id, `/api/sessions/${sid}`, {
+    method: "PATCH",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ title: input.title }),
+    sessionId: input.sessionId,
+  });
+  return res.json();
+}
+
+// --- mechaSessionImport ---
+export async function mechaSessionImport(
+  client: DockerClient,
+  input: { id: string },
+): Promise<{ imported: number }> {
+  const res = await runtimeFetch(client, input.id, "/api/sessions/import", {
+    method: "POST",
+  });
+  return res.json() as Promise<{ imported: number }>;
 }
 
 // --- mechaSessionConfigUpdate ---
