@@ -1,9 +1,9 @@
 "use client";
 
 import { ChevronRightIcon, MenuIcon, StopCircleIcon, PlayIcon } from "lucide-react";
-import { Button } from "@/components/ui/button";
 import { useDashboardStore } from "@/lib/store";
 import { useCallback, useState } from "react";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 
 export function TopBar() {
   const mechas = useDashboardStore((s) => s.mechas);
@@ -37,24 +37,25 @@ export function TopBar() {
   return (
     <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
       {/* Mobile menu button */}
-      <Button
+      <TooltipIconButton
+        tooltip="Toggle sidebar"
         variant="ghost"
         size="icon-sm"
         className="md:hidden"
         onClick={() => setSessionsPanelOpen(!sessionsPanelOpen)}
       >
         <MenuIcon className="size-4" />
-      </Button>
+      </TooltipIconButton>
 
       {/* Breadcrumb */}
       <div className="flex items-center gap-1 text-sm min-w-0">
         {selectedMecha ? (
           <>
-            <span className="text-muted-foreground truncate max-w-[100px]">
+            <span className="text-muted-foreground truncate max-w-24">
               {selectedMecha.node}
             </span>
             <ChevronRightIcon className="size-3 text-muted-foreground shrink-0" />
-            <span className="font-medium font-mono truncate max-w-[150px]">
+            <span className="font-medium font-mono truncate max-w-36">
               {selectedMecha.id}
             </span>
             <ChevronRightIcon className="size-3 text-muted-foreground shrink-0" />
@@ -82,19 +83,19 @@ export function TopBar() {
           </span>
 
           {/* Start/Stop toggle */}
-          <Button
+          <TooltipIconButton
+            tooltip={selectedMecha.state === "running" ? "Stop" : "Start"}
             variant="ghost"
             size="icon-sm"
             onClick={toggleMecha}
             disabled={acting}
-            title={selectedMecha.state === "running" ? "Stop" : "Start"}
           >
             {selectedMecha.state === "running" ? (
               <StopCircleIcon className="size-4 text-warning" />
             ) : (
               <PlayIcon className="size-4 text-success" />
             )}
-          </Button>
+          </TooltipIconButton>
         </div>
       )}
     </div>

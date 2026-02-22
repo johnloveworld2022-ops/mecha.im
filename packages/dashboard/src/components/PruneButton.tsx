@@ -97,7 +97,7 @@ export function PruneButton({ prunableCount, onPruned }: { prunableCount: number
             </Button>
             <Button
               onClick={doPrune}
-              className="bg-warning text-white hover:bg-warning/90"
+              className="bg-warning text-warning-foreground hover:bg-warning/90"
             >
               Prune
             </Button>

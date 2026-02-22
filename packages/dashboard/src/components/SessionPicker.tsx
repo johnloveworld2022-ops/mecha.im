@@ -1,7 +1,9 @@
 "use client";
 
 import { forwardRef, useCallback, useEffect, useImperativeHandle, useState } from "react";
+import { XIcon } from "lucide-react";
 import { Button } from "@/components/ui/button";
+import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
   Dialog,
   DialogContent,
@@ -150,15 +152,17 @@ export const SessionPicker = forwardRef<SessionPickerHandle, Props>(function Ses
                 }`}>
                   ({s.messageCount})
                 </span>
-                <button
+                <TooltipIconButton
+                  tooltip="Delete session"
+                  variant="ghost"
+                  size="icon-xs"
                   onClick={(e) => { e.stopPropagation(); setPendingDeleteId(s.sessionId); }}
-                  className={`bg-transparent border-none cursor-pointer text-xs leading-none px-0.5 ${
+                  className={
                     isSelected ? "text-primary-foreground/60" : "text-muted-foreground"
-                  }`}
-                  title="Delete session"
+                  }
                 >
-                  x
-                </button>
+                  <XIcon className="size-3" />
+                </TooltipIconButton>
               </div>
             );
           })}
