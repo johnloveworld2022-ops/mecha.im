@@ -119,6 +119,18 @@ describe("TelegramAdapter", () => {
     expect(handler).not.toHaveBeenCalled();
   });
 
+  it("restart after stop reuses existing handlers", async () => {
+    const adapter = createAdapter();
+    const handler = vi.fn().mockResolvedValue(undefined);
+    mockBot.start.mockReturnValue(Promise.resolve());
+    await adapter.start(handler);
+    await adapter.stop();
+    // Second start should NOT re-register handlers (handlersRegistered=true, running=false)
+    await adapter.start(handler);
+    expect(mockBot.on).toHaveBeenCalledTimes(1); // handlers registered only once
+    expect(mockBot.start).toHaveBeenCalledTimes(2); // but bot.start called twice
+  });
+
   it("stop calls bot.stop()", async () => {
     const adapter = createAdapter();
     mockBot.start.mockReturnValue(Promise.resolve());
@@ -136,7 +148,7 @@ describe("TelegramAdapter", () => {
   it("sendText sends message via bot API", async () => {
     const adapter = createAdapter();
     await adapter.sendText("12345", "Hello!");
-    expect(mockBot.api.sendMessage).toHaveBeenCalledWith(12345, "Hello!");
+    expect(mockBot.api.sendMessage).toHaveBeenCalledWith("12345", "Hello!");
   });
 
   it("sendText chunks long messages", async () => {
@@ -144,6 +156,13 @@ describe("TelegramAdapter", () => {
     const longText = "a".repeat(5000);
     await adapter.sendText("12345", longText);
     expect(mockBot.api.sendMessage).toHaveBeenCalledTimes(2);
+  });
+
+  it("sendTyping sends typing action via bot API", async () => {
+    const adapter = createAdapter();
+    mockBot.api.sendChatAction = vi.fn().mockResolvedValue(undefined);
+    await adapter.sendTyping("12345");
+    expect(mockBot.api.sendChatAction).toHaveBeenCalledWith("12345", "typing");
   });
 
   it("channelId is set correctly", () => {

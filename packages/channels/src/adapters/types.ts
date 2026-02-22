@@ -15,4 +15,5 @@ export interface ChannelAdapter {
   start(handler: MessageHandler): Promise<void>;
   stop(): Promise<void>;
   sendText(chatId: string, text: string): Promise<void>;
+  sendTyping(chatId: string): Promise<void>;
 }

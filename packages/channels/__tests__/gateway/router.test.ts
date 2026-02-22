@@ -1,5 +1,5 @@
 import { describe, it, expect, vi, beforeEach } from "vitest";
-import { handleInbound, consumeSSEResponse } from "../../src/gateway/router.js";
+import { handleInbound, consumeSSEResponse, extractText } from "../../src/gateway/router.js";
 import type { GatewayDeps } from "../../src/gateway/router.js";
 import type { ChannelAdapter, InboundMessage } from "../../src/adapters/types.js";
 
@@ -11,12 +11,13 @@ vi.mock("@mecha/service", () => ({
   mechaSessionMessage: (...args: unknown[]) => mockSessionMessage(...args),
 }));
 
-function createMockAdapter(): ChannelAdapter & { sendText: ReturnType<typeof vi.fn> } {
+function createMockAdapter(): ChannelAdapter & { sendText: ReturnType<typeof vi.fn>; sendTyping: ReturnType<typeof vi.fn> } {
   return {
     channelId: "ch-test",
     start: vi.fn().mockResolvedValue(undefined),
     stop: vi.fn().mockResolvedValue(undefined),
     sendText: vi.fn().mockResolvedValue(undefined),
+    sendTyping: vi.fn().mockResolvedValue(undefined),
   };
 }
 
@@ -30,6 +31,42 @@ function createSSEResponse(events: Array<{ text?: string; content?: string; delt
   });
   return new Response(stream);
 }
+
+describe("extractText", () => {
+  it("extracts result from mecha runtime result event", () => {
+    expect(extractText({ type: "result", subtype: "success", result: "Hello!" })).toBe("Hello!");
+  });
+
+  it("returns null for mecha runtime session/system/assistant events", () => {
+    expect(extractText({ type: "session", session_id: "s1" })).toBeNull();
+    expect(extractText({ type: "system", subtype: "init" })).toBeNull();
+    expect(extractText({ type: "assistant", message: { content: [{ type: "text", text: "Hi" }] } })).toBeNull();
+  });
+
+  it("extracts text from generic text field", () => {
+    expect(extractText({ text: "hello" })).toBe("hello");
+  });
+
+  it("extracts text from generic content field", () => {
+    expect(extractText({ content: "world" })).toBe("world");
+  });
+
+  it("extracts text from delta.text field", () => {
+    expect(extractText({ delta: { text: "chunk" } })).toBe("chunk");
+  });
+
+  it("returns null when delta object has no text field", () => {
+    expect(extractText({ delta: { content: "no text" } })).toBeNull();
+  });
+
+  it("returns null for unrecognized shapes", () => {
+    expect(extractText({ foo: "bar" })).toBeNull();
+  });
+
+  it("ignores result event without string result", () => {
+    expect(extractText({ type: "result", result: 123 } as any)).toBeNull();
+  });
+});
 
 describe("consumeSSEResponse", () => {
   it("accumulates text from SSE data lines", async () => {
@@ -109,6 +146,24 @@ describe("consumeSSEResponse", () => {
     });
     const result = await consumeSSEResponse(new Response(stream));
     expect(result).toBe("trailing");
+  });
+
+  it("extracts result text from mecha runtime SSE stream", async () => {
+    const events = [
+      { type: "session", session_id: "s1" },
+      { type: "system", subtype: "init", tools: [] },
+      { type: "assistant", message: { content: [{ type: "text", text: "Hello" }] } },
+      { type: "result", subtype: "success", result: "Hello from mecha!" },
+    ];
+    const lines = events.map((e) => `data: ${JSON.stringify(e)}`).join("\n") + "\n";
+    const stream = new ReadableStream({
+      start(controller) {
+        controller.enqueue(new TextEncoder().encode(lines));
+        controller.close();
+      },
+    });
+    const result = await consumeSSEResponse(new Response(stream));
+    expect(result).toBe("Hello from mecha!");
   });
 
   it("skips empty data lines", async () => {
@@ -228,6 +283,22 @@ describe("handleInbound", () => {
       "12345",
       "Sorry, something went wrong. Please try again later.",
     );
+  });
+
+  it("sends typing indicator before processing", async () => {
+    mockStore.getLink.mockReturnValue({
+      channel_id: "ch-test",
+      chat_id: "12345",
+      mecha_id: "mx-abc",
+      session_id: "sess-x",
+    });
+    mockSessionMessage.mockResolvedValue(
+      createSSEResponse([{ type: "result", result: "hi" }]),
+    );
+
+    await handleInbound(deps, "ch-test", msg);
+
+    expect(adapter.sendTyping).toHaveBeenCalledWith("12345");
   });
 
   it("does nothing when adapter not found", async () => {

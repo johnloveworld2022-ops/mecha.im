@@ -316,6 +316,15 @@ describe("mecha channel", () => {
     );
   });
 
+  it("channel serve rejects invalid port", async () => {
+    const program = new Command();
+    registerChannelCommand(program, deps);
+    await program.parseAsync(["channel", "serve", "-p", "abc"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("Invalid port"));
+    expect(process.exitCode).toBe(1);
+  });
+
   it("channel serve reports error on failure", async () => {
     mockOpenStore.mockImplementation(() => { throw new Error("serve fail"); });
 

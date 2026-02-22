@@ -57,12 +57,9 @@ export async function createGatewayServer(opts: GatewayServerOptions): Promise<G
   }
 
   async function stop(): Promise<void> {
-    for (const adapter of adapters.values()) {
-      await adapter.stop();
-    }
+    await Promise.allSettled([...adapters.values()].map((a) => a.stop()));
     adapters.clear();
-    await app.close();
-    store.close();
+    try { await app.close(); } finally { store.close(); }
   }
 
   return { app, start, stop };

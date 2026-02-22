@@ -31,7 +31,8 @@ export interface TelegramAdapterDeps {
 export class TelegramAdapter implements ChannelAdapter {
   readonly channelId: string;
   private readonly bot: Bot;
-  private started = false;
+  private handlersRegistered = false;
+  private running = false;
 
   constructor(channelId: string, botToken: string, deps?: TelegramAdapterDeps) {
     this.channelId = channelId;
@@ -42,38 +43,45 @@ export class TelegramAdapter implements ChannelAdapter {
   }
 
   async start(handler: MessageHandler): Promise<void> {
-    if (this.started) return;
-    this.bot.on("message:text", async (ctx) => {
-      // Only handle private (DM) messages
-      if (ctx.chat.type !== "private") return;
-      const msg: InboundMessage = {
-        chatId: String(ctx.chat.id),
-        text: ctx.message.text,
-        messageId: String(ctx.message.message_id),
-        from: {
-          id: String(ctx.from.id),
-          username: ctx.from.username,
-        },
-      };
-      await handler(this.channelId, msg);
-    });
+    if (this.running) return;
+    if (!this.handlersRegistered) {
+      this.bot.on("message:text", async (ctx) => {
+        // Only handle private (DM) messages
+        if (ctx.chat.type !== "private") return;
+        const msg: InboundMessage = {
+          chatId: String(ctx.chat.id),
+          text: ctx.message.text,
+          messageId: String(ctx.message.message_id),
+          from: {
+            id: String(ctx.from.id),
+            username: ctx.from.username,
+          },
+        };
+        await handler(this.channelId, msg);
+      });
+      this.handlersRegistered = true;
+    }
     // grammy's bot.start() returns a promise that resolves when bot.stop() is called.
     // Fire-and-forget with error catch to prevent unhandled rejections.
     this.bot.start().catch(/* v8 ignore next */ () => {});
-    this.started = true;
+    this.running = true;
   }
 
   async stop(): Promise<void> {
-    if (this.started) {
+    if (this.running) {
       this.bot.stop();
-      this.started = false;
+      this.running = false;
     }
   }
 
   async sendText(chatId: string, text: string): Promise<void> {
     const chunks = chunkText(text);
     for (const chunk of chunks) {
-      await this.bot.api.sendMessage(Number(chatId), chunk);
+      await this.bot.api.sendMessage(chatId, chunk);
     }
+  }
+
+  async sendTyping(chatId: string): Promise<void> {
+    await this.bot.api.sendChatAction(chatId, "typing");
   }
 }

@@ -9,6 +9,25 @@ export interface GatewayDeps {
   dockerClient: DockerClient;
 }
 
+/** Extract final response text from SSE data events.
+ *  The mecha runtime emits multiple event types but only "result" carries the final text.
+ *  For non-mecha SSE streams, falls back to common streaming shapes. */
+export function extractText(data: Record<string, unknown>): string | null {
+  // Mecha runtime "result" event: { type: "result", subtype: "success", result: "final text" }
+  // This is the authoritative final response — return it and signal "done".
+  if (data.type === "result" && typeof data.result === "string") return data.result;
+  // Mecha runtime "session", "system", "assistant" events carry metadata, not user-facing text.
+  if (data.type === "session" || data.type === "system" || data.type === "assistant") return null;
+  // Generic streaming shapes for non-mecha SSE sources:
+  if (typeof data.text === "string") return data.text;
+  if (typeof data.content === "string") return data.content;
+  if (data.delta && typeof data.delta === "object") {
+    const delta = data.delta as Record<string, unknown>;
+    if (typeof delta.text === "string") return delta.text;
+  }
+  return null;
+}
+
 function parseSSELines(lines: string[], accumulated: string): string {
   for (const line of lines) {
     if (!line.startsWith("data: ")) continue;
@@ -16,8 +35,7 @@ function parseSSELines(lines: string[], accumulated: string): string {
     if (!jsonStr || jsonStr === "[DONE]") continue;
     try {
       const data = JSON.parse(jsonStr);
-      // Support multiple SDK message shapes
-      const text = data.text ?? data.content ?? data.delta?.text ?? "";
+      const text = extractText(data);
       if (text) accumulated += text;
     } catch {
       // Skip malformed JSON lines
@@ -48,6 +66,9 @@ export async function consumeSSEResponse(res: Response): Promise<string> {
     accumulated = parseSSELines(lines, accumulated);
   }
 
+  // Flush any remaining bytes from the decoder (trailing multibyte chars)
+  buffer += decoder.decode();
+
   // Process any remaining data in buffer after stream ends
   if (buffer.trim()) {
     accumulated = parseSSELines([buffer], accumulated);
@@ -65,7 +86,7 @@ export async function handleInbound(
   channelId: string,
   msg: InboundMessage,
 ): Promise<void> {
-  const { store, adapters, dockerClient } = deps;
+  const { store, adapters } = deps;
   const adapter = adapters.get(channelId);
   if (!adapter) return;
 
@@ -83,8 +104,42 @@ export async function handleInbound(
   const lockKey = `${channelId}:${msg.chatId}`;
   const prev = sessionLocks.get(lockKey) ?? Promise.resolve();
   const current = prev.then(() => processMessage(deps, adapter, channelId, msg, link));
-  sessionLocks.set(lockKey, current.catch(/* v8 ignore next */ () => {}));
+  /* v8 ignore start — cleanup runs async after await completes */
+  sessionLocks.set(lockKey, current.catch(() => {}).then(() => {
+    if (sessionLocks.get(lockKey) === current) sessionLocks.delete(lockKey);
+  }));
+  /* v8 ignore stop */
   await current;
+}
+
+async function ensureSession(
+  store: ChannelStore,
+  dockerClient: DockerClient,
+  channelId: string,
+  msg: InboundMessage,
+  link: { mecha_id: string; session_id: string | null },
+): Promise<string> {
+  let sessionId = link.session_id;
+  if (!sessionId) {
+    // Re-read link in case another message already created the session
+    const freshLink = store.getLink(channelId, msg.chatId);
+    sessionId = freshLink?.session_id ?? null;
+  }
+  if (!sessionId) {
+    const session = await mechaSessionCreate(dockerClient, {
+      id: link.mecha_id,
+      title: `telegram-${msg.chatId}`,
+    });
+    const result = session as Record<string, unknown>;
+    /* v8 ignore start — defensive guard: runtime API always returns sessionId */
+    if (typeof result.sessionId !== "string") {
+      throw new Error("Session creation did not return a sessionId");
+    }
+    /* v8 ignore stop */
+    sessionId = result.sessionId;
+    store.updateSessionId(channelId, msg.chatId, sessionId);
+  }
+  return sessionId;
 }
 
 async function processMessage(
@@ -96,31 +151,29 @@ async function processMessage(
 ): Promise<void> {
   const { store, dockerClient } = deps;
   try {
-    // Ensure a session exists
-    let sessionId = link.session_id;
-    if (!sessionId) {
-      // Re-read link in case another message already created the session
-      const freshLink = store.getLink(channelId, msg.chatId);
-      sessionId = freshLink?.session_id ?? null;
-    }
-    if (!sessionId) {
-      const session = await mechaSessionCreate(dockerClient, {
+    const sessionId = await ensureSession(store, dockerClient, channelId, msg, link);
+
+    // Show typing indicator while processing (Telegram's expires after ~5s)
+    await adapter.sendTyping(msg.chatId);
+    /* v8 ignore start — interval callback not reachable in sync tests */
+    const typingInterval = setInterval(() => {
+      adapter.sendTyping(msg.chatId).catch(() => {});
+    }, 4000);
+    /* v8 ignore stop */
+
+    try {
+      const res = await mechaSessionMessage(dockerClient, {
         id: link.mecha_id,
-        title: `telegram-${msg.chatId}`,
-      }) as { sessionId: string };
-      sessionId = session.sessionId;
-      store.updateSessionId(channelId, msg.chatId, sessionId);
-    }
+        sessionId,
+        message: msg.text,
+      });
 
-    const res = await mechaSessionMessage(dockerClient, {
-      id: link.mecha_id,
-      sessionId,
-      message: msg.text,
-    });
-
-    const responseText = await consumeSSEResponse(res);
-    if (responseText) {
-      await adapter.sendText(msg.chatId, responseText);
+      const responseText = await consumeSSEResponse(res);
+      if (responseText) {
+        await adapter.sendText(msg.chatId, responseText);
+      }
+    } finally {
+      clearInterval(typingInterval);
     }
   } catch {
     // Don't expose internal error details to Telegram users
