@@ -29,13 +29,13 @@ export function LogViewer({ mechaId }: { mechaId: string }) {
 
   return (
     <div className="flex flex-col gap-2">
-      <div className="flex items-center gap-2 text-[13px] text-muted-foreground">
+      <div className="flex items-center gap-2 text-sm text-muted-foreground">
         <span className={`size-2 rounded-full ${connected ? "bg-success" : "bg-destructive"}`} />
         {connected ? "Streaming logs" : "Disconnected"}
       </div>
       <div
         ref={containerRef}
-        className="flex-1 min-h-[200px] max-h-[500px] overflow-y-auto bg-black rounded-lg p-3 font-mono text-xs leading-relaxed text-[#ccc] border border-border"
+        className="flex-1 min-h-52 max-h-96 overflow-y-auto bg-black rounded-lg p-3 font-mono text-xs leading-relaxed text-muted-foreground border border-border"
       >
         {lines.length === 0 ? (
           <span className="text-muted-foreground">Waiting for logs...</span>

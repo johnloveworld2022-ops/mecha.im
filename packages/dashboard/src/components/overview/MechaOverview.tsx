@@ -197,7 +197,7 @@ export function MechaOverview({ mechaId, isRunning }: MechaOverviewProps) {
 function InfoCard({ label, value }: { label: string; value: string }) {
   return (
     <div className="rounded-lg border border-border bg-card px-4 py-3">
-      <div className="text-[11px] text-muted-foreground mb-1 uppercase tracking-wider">{label}</div>
+      <div className="text-xs text-muted-foreground mb-1 uppercase tracking-wider">{label}</div>
       <div className="text-sm font-mono overflow-hidden text-ellipsis whitespace-nowrap">{value}</div>
     </div>
   );

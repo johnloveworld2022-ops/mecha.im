@@ -66,11 +66,11 @@ export function LoginForm() {
           placeholder="000000"
           aria-label="6-digit TOTP code"
           autoFocus
-          className="px-4 py-3 text-2xl text-center tracking-[0.5em] rounded-lg border border-border bg-background text-foreground outline-none"
+          className="px-4 py-3 text-2xl text-center tracking-widest rounded-lg border border-border bg-background text-foreground outline-none"
         />
 
         {error && (
-          <p className="text-destructive text-[13px] text-center">
+          <p className="text-destructive text-sm text-center">
             {error}
           </p>
         )}

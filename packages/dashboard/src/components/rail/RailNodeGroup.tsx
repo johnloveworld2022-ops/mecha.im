@@ -29,7 +29,7 @@ export function RailNodeGroup({
     <div className="flex flex-col items-center gap-1">
       <button
         onClick={onToggleCollapse}
-        className="flex items-center gap-1 px-1 py-0.5 text-[10px] font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
+        className="flex items-center gap-1 px-1 py-0.5 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
       >
         <span
           className={cn(

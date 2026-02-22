@@ -70,10 +70,10 @@ export function MechaInspect({ mechaId }: { mechaId: string }) {
         )}
       </div>
       {error && (
-        <p className="text-[13px] text-destructive mt-2">{error}</p>
+        <p className="text-sm text-destructive mt-2">{error}</p>
       )}
       {open && data && (
-        <pre className="mt-2 p-3 text-xs font-mono bg-background border border-border rounded-md overflow-auto max-h-[500px] whitespace-pre-wrap break-all text-foreground">
+        <pre className="mt-2 p-3 text-xs font-mono bg-background border border-border rounded-md overflow-auto max-h-96 whitespace-pre-wrap break-all text-foreground">
           {data}
         </pre>
       )}

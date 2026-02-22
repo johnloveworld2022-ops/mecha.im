@@ -26,7 +26,7 @@ export function SessionTabs({ activeTab, onTabChange }: SessionTabsProps) {
             key={tab.id}
             onClick={() => onTabChange(tab.id)}
             className={cn(
-              "flex flex-1 flex-col items-center gap-0.5 py-2 text-[10px] font-medium transition-colors",
+              "flex flex-1 flex-col items-center gap-0.5 py-2 text-xs font-medium transition-colors",
               activeTab === tab.id
                 ? "text-sidebar-primary"
                 : "text-muted-foreground hover:text-sidebar-foreground",

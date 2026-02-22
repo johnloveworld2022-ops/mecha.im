@@ -84,7 +84,7 @@ export function MechaExec({ mechaId }: { mechaId: string }) {
           onKeyDown={handleKeyDown}
           placeholder="Enter command (e.g., ls -la)"
           disabled={running}
-          className="flex-1 px-2.5 py-1.5 text-[13px] font-mono rounded border border-border bg-background text-foreground outline-none"
+          className="flex-1 px-2.5 py-1.5 text-sm font-mono rounded border border-border bg-background text-foreground outline-none"
         />
         <Button
           onClick={runCommand}
@@ -95,10 +95,10 @@ export function MechaExec({ mechaId }: { mechaId: string }) {
         </Button>
       </div>
       {error && (
-        <p className="text-[13px] text-destructive mb-2">{error}</p>
+        <p className="text-sm text-destructive mb-2">{error}</p>
       )}
       {results.length > 0 && (
-        <div className="p-3 bg-background border border-border rounded-md max-h-[400px] overflow-auto font-mono text-xs">
+        <div className="p-3 bg-background border border-border rounded-md max-h-96 overflow-auto font-mono text-xs">
           {results.map((r) => (
             <div key={r.ts} className="mb-3">
               <div className="text-accent-foreground mb-1">
@@ -112,7 +112,7 @@ export function MechaExec({ mechaId }: { mechaId: string }) {
                   : r.result.output || "(no output)"}
               </pre>
               {r.result.exitCode !== 0 && (
-                <div className="text-warning text-[11px] mt-0.5">
+                <div className="text-warning text-xs mt-0.5">
                   exit code: {r.result.exitCode}
                 </div>
               )}

@@ -77,8 +77,8 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
     <div className="space-y-3">
       {/* Endpoint */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground w-16 shrink-0">Endpoint</span>
-        <code className="text-[13px] font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        <span className="text-xs text-muted-foreground w-16 shrink-0">Endpoint</span>
+        <code className="text-sm font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {info.endpoint}
         </code>
         <Button
@@ -93,8 +93,8 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
 
       {/* Token */}
       <div className="flex items-center gap-2">
-        <span className="text-[11px] text-muted-foreground w-16 shrink-0">Token</span>
-        <code className="text-[13px] font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
+        <span className="text-xs text-muted-foreground w-16 shrink-0">Token</span>
+        <code className="text-sm font-mono flex-1 overflow-hidden text-ellipsis whitespace-nowrap">
           {showToken ? info.token ?? "(not available)" : maskedToken}
         </code>
         <Button
@@ -129,7 +129,7 @@ export function MechaMcp({ mechaId }: { mechaId: string }) {
         </Button>
         {showConfig && (
           <div className="relative">
-            <pre className="text-[12px] font-mono bg-muted p-3 rounded-md overflow-x-auto">
+            <pre className="text-xs font-mono bg-muted p-3 rounded-md overflow-x-auto">
               {configJson}
             </pre>
             <Button

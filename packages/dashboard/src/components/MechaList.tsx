@@ -142,12 +142,12 @@ export function MechaList() {
 
   const prunableCount = mechas.filter((m) => PRUNABLE_STATES.has(m.state)).length;
 
-  const inputCls = "flex-1 px-2.5 py-1.5 text-[13px] font-mono rounded border border-border bg-background text-foreground outline-none";
+  const inputCls = "flex-1 px-2.5 py-1.5 text-sm font-mono rounded border border-border bg-background text-foreground outline-none";
 
   const createForm = showCreate && (
     <form onSubmit={createMecha} className="flex flex-col gap-2 p-3 mb-3 rounded-lg border border-border bg-card">
       <div className="flex gap-2 items-center">
-        <label htmlFor="create-path" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Project path:</label>
+        <label htmlFor="create-path" className="text-sm text-muted-foreground whitespace-nowrap min-w-28">Project path:</label>
         <input
           id="create-path"
           type="text"
@@ -159,7 +159,7 @@ export function MechaList() {
         />
       </div>
       <div className="flex gap-2 items-center">
-        <label htmlFor="create-claude-token" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Claude Setup Token:</label>
+        <label htmlFor="create-claude-token" className="text-sm text-muted-foreground whitespace-nowrap min-w-28">Claude Setup Token:</label>
         <input
           id="create-claude-token"
           type="password"
@@ -171,7 +171,7 @@ export function MechaList() {
         />
       </div>
       <div className="flex gap-2 items-center">
-        <label htmlFor="create-otp" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">OTP Secret:</label>
+        <label htmlFor="create-otp" className="text-sm text-muted-foreground whitespace-nowrap min-w-28">OTP Secret:</label>
         <input
           id="create-otp"
           type="password"
@@ -183,7 +183,7 @@ export function MechaList() {
         />
       </div>
       <div className="flex gap-2 items-center">
-        <label htmlFor="create-permission-mode" className="text-[13px] text-muted-foreground whitespace-nowrap min-w-[110px]">Permission Mode:</label>
+        <label htmlFor="create-permission-mode" className="text-sm text-muted-foreground whitespace-nowrap min-w-28">Permission Mode:</label>
         <select
           id="create-permission-mode"
           value={permissionMode}
@@ -252,7 +252,7 @@ export function MechaList() {
       </div>
       {createForm}
       <div className="overflow-x-auto">
-      <table className="w-full border-collapse text-[13px]">
+      <table className="w-full border-collapse text-sm">
         <thead>
           <tr className="border-b border-border">
             {["ID", "State", "Port", "Path", "Actions"].map((h) => (
@@ -330,7 +330,7 @@ export function MechaList() {
       </table>
       </div>
       {actionError && (
-        <div className="mt-2 px-3 py-2 text-[13px] text-destructive bg-destructive/10 rounded-md border border-destructive flex items-center justify-between">
+        <div className="mt-2 px-3 py-2 text-sm text-destructive bg-destructive/10 rounded-md border border-destructive flex items-center justify-between">
           <span>{actionError}</span>
           <button
             onClick={() => setActionError("")}
@@ -347,7 +347,7 @@ export function MechaList() {
               Remove <code className="text-foreground">{confirmRemove}</code>? This will delete the container.
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={removeWithState}

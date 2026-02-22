@@ -94,7 +94,7 @@ export function SessionsPanel() {
           <span className="text-sm font-medium text-sidebar-foreground truncate">
             {selectedMecha?.name || selectedMechaId}
           </span>
-          <span className="text-[10px] text-muted-foreground truncate">
+          <span className="text-xs text-muted-foreground truncate">
             {selectedMecha?.path || ""}
           </span>
         </div>

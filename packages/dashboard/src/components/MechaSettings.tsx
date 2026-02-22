@@ -54,7 +54,7 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
     }
   }
 
-  const inputCls = "w-full px-3 py-2 text-[13px] font-mono rounded-md border border-border bg-background text-foreground outline-none";
+  const inputCls = "w-full px-3 py-2 text-sm font-mono rounded-md border border-border bg-background text-foreground outline-none";
 
   return (
     <form onSubmit={handleSubmit}>
@@ -119,7 +119,7 @@ export function MechaSettings({ mechaId }: { mechaId: string }) {
         </Button>
 
         {message && (
-          <span className={`text-[13px] ${
+          <span className={`text-sm ${
             message.type === "success" ? "text-success" : "text-destructive"
           }`}>
             {message.text}

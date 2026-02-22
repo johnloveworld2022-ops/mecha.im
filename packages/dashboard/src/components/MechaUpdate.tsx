@@ -81,7 +81,7 @@ export function MechaUpdate({ mechaId }: { mechaId: string }) {
               This will pull the latest image, stop the container, recreate it, and start it again.
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={noPull}

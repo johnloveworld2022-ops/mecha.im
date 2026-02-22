@@ -37,17 +37,17 @@ export function MechaEnv({ mechaId }: { mechaId: string }) {
   }, [fetchEnv]);
 
   if (loading) {
-    return <p className="text-muted-foreground text-[13px]">Loading environment...</p>;
+    return <p className="text-muted-foreground text-sm">Loading environment...</p>;
   }
 
   return (
     <div>
       {error && (
-        <p className="text-destructive text-[13px] mb-2">
+        <p className="text-destructive text-sm mb-2">
           {error}
           <button
             onClick={() => { setError(""); fetchEnv(); }}
-            className="ml-2 bg-transparent border-none text-primary cursor-pointer text-[13px]"
+            className="ml-2 bg-transparent border-none text-primary cursor-pointer text-sm"
           >Retry</button>
         </p>
       )}
@@ -60,10 +60,10 @@ export function MechaEnv({ mechaId }: { mechaId: string }) {
         Show secrets
       </label>
       {env.length === 0 ? (
-        <p className="text-muted-foreground text-[13px]">No environment variables.</p>
+        <p className="text-muted-foreground text-sm">No environment variables.</p>
       ) : (
         <div className="overflow-x-auto">
-          <table className="w-full border-collapse text-[13px]">
+          <table className="w-full border-collapse text-sm">
             <thead>
               <tr className="border-b border-border">
                 <th className="px-3 py-2 text-left text-muted-foreground font-medium">Key</th>

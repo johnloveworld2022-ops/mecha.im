@@ -104,13 +104,13 @@ export const SessionPicker = forwardRef<SessionPickerHandle, Props>(function Ses
   }, [pendingDeleteId, mechaId, selectedSessionId, onSelectSession]);
 
   if (loading) {
-    return <div className="text-[13px] text-muted-foreground">Loading sessions...</div>;
+    return <div className="text-sm text-muted-foreground">Loading sessions...</div>;
   }
 
   return (
     <div className="mb-3">
       <div className="flex items-center gap-2 mb-2">
-        <span className="text-[13px] text-muted-foreground">Sessions</span>
+        <span className="text-sm text-muted-foreground">Sessions</span>
         <Button variant="outline" size="xs" onClick={createSession}>
           + New
         </Button>
@@ -145,7 +145,7 @@ export const SessionPicker = forwardRef<SessionPickerHandle, Props>(function Ses
                   s.state === "busy" ? "bg-warning" : "bg-success"
                 }`} />
                 <span>{s.title || s.sessionId.slice(0, 8)}</span>
-                <span className={`text-[10px] ${
+                <span className={`text-xs ${
                   isSelected ? "opacity-70" : "text-muted-foreground"
                 }`}>
                   ({s.messageCount})

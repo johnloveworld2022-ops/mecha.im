@@ -83,7 +83,7 @@ export function PruneButton({ prunableCount, onPruned }: { prunableCount: number
               Remove {prunableCount} stopped/exited container(s)?
             </DialogDescription>
           </DialogHeader>
-          <label className="flex items-center gap-1.5 text-[13px] text-muted-foreground cursor-pointer">
+          <label className="flex items-center gap-1.5 text-sm text-muted-foreground cursor-pointer">
             <input
               type="checkbox"
               checked={volumes}
