@@ -34,6 +34,7 @@ export interface Session {
   lastMessageAt: string | null;
   createdAt: string;
   usage?: SessionUsage;
+  config?: Record<string, unknown>;
 }
 
 export type ActiveTab = "chat" | "overview" | "terminal" | "inspect";
@@ -53,7 +54,7 @@ interface DashboardState {
   setSessions: (mechaId: string, s: Session[]) => void;
   addSession: (mechaId: string, s: Session) => void;
   removeSession: (mechaId: string, sessionId: string) => void;
-  updateSession: (mechaId: string, sessionId: string, updates: Partial<Pick<Session, "title">>) => void;
+  updateSession: (mechaId: string, sessionId: string, updates: Partial<Pick<Session, "title" | "state">>) => void;
 
   // Selected session
   selectedSessionId: string | null;

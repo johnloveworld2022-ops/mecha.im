@@ -146,6 +146,18 @@ export function SessionsPanel() {
     } catch { /* network error — no state change */ }
   }, [selectedMechaId, confirmDelete, removeSession, selectedSessionId, mechaSessions, setSelectedSessionId, createSession]);
 
+  const handleInterrupt = useCallback(async (sessionId: string) => {
+    if (!selectedMechaId) return;
+    try {
+      const res = await fetch(`/api/mechas/${selectedMechaId}/sessions/${sessionId}/interrupt`, {
+        method: "POST",
+      });
+      if (res.ok) {
+        updateSession(selectedMechaId, sessionId, { state: "idle" });
+      }
+    } catch { /* network error — no state change */ }
+  }, [selectedMechaId, updateSession]);
+
   const handleImport = useCallback(async () => {
     if (!selectedMechaId) return;
     try {
@@ -289,6 +301,7 @@ export function SessionsPanel() {
                     onClick={() => setSelectedSessionId(s.sessionId)}
                     onRename={handleRename}
                     onDelete={(sid) => setConfirmDelete(sid)}
+                    onInterrupt={handleInterrupt}
                   />
                 ))}
               </div>

@@ -1,7 +1,7 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { MoreHorizontalIcon, PencilIcon, TrashIcon } from "lucide-react";
+import { CopyIcon, MoreHorizontalIcon, PencilIcon, SquareIcon, TrashIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import {
@@ -18,12 +18,14 @@ interface SessionItemProps {
   onClick: () => void;
   onRename: (sessionId: string, newTitle: string) => void;
   onDelete: (sessionId: string) => void;
+  onInterrupt: (sessionId: string) => void;
 }
 
 function timeAgo(dateStr: string | null): string {
   if (!dateStr) return "";
   const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T") + "Z";
   const diff = Date.now() - new Date(normalized).getTime();
+  if (Number.isNaN(diff)) return "";
   const mins = Math.floor(diff / 60000);
   if (mins < 1) return "now";
   if (mins < 60) return `${mins}m`;
@@ -33,7 +35,7 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d`;
 }
 
-export function SessionItem({ session, isActive, onClick, onRename, onDelete }: SessionItemProps) {
+export function SessionItem({ session, isActive, onClick, onRename, onDelete, onInterrupt }: SessionItemProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -142,11 +144,21 @@ export function SessionItem({ session, isActive, onClick, onRename, onDelete }: 
                 <MoreHorizontalIcon className="size-3.5" />
               </TooltipIconButton>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-36">
+            <DropdownMenuContent align="end" className="w-44">
+              <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(session.sessionId).catch(() => { /* clipboard unavailable in insecure context */ }); }}>
+                <CopyIcon className="size-4" />
+                Copy Session ID
+              </DropdownMenuItem>
               <DropdownMenuItem onClick={startRename}>
                 <PencilIcon className="size-4" />
                 Rename
               </DropdownMenuItem>
+              {session.state === "busy" && (
+                <DropdownMenuItem onClick={() => onInterrupt(session.sessionId)}>
+                  <SquareIcon className="size-4" />
+                  Interrupt
+                </DropdownMenuItem>
+              )}
               <DropdownMenuItem
                 onClick={() => onDelete(session.sessionId)}
                 variant="destructive"

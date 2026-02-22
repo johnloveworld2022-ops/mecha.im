@@ -9,6 +9,7 @@ const mockMechaSessionGet = vi.fn();
 const mockMechaSessionDelete = vi.fn();
 const mockMechaSessionInterrupt = vi.fn();
 const mockMechaSessionRename = vi.fn();
+const mockMechaSessionConfigUpdate = vi.fn();
 
 vi.mock("@mecha/service", () => ({
   mechaSessionList: (...args: unknown[]) => mockMechaSessionList(...args),
@@ -16,6 +17,7 @@ vi.mock("@mecha/service", () => ({
   mechaSessionDelete: (...args: unknown[]) => mockMechaSessionDelete(...args),
   mechaSessionInterrupt: (...args: unknown[]) => mockMechaSessionInterrupt(...args),
   mechaSessionRename: (...args: unknown[]) => mockMechaSessionRename(...args),
+  mechaSessionConfigUpdate: (...args: unknown[]) => mockMechaSessionConfigUpdate(...args),
 }));
 
 function createMockFormatter(): Formatter {
@@ -204,6 +206,28 @@ describe("mecha sessions", () => {
     expect(formatter.info).toHaveBeenCalledWith("Title: (untitled)");
   });
 
+  it("sessions show handles missing usage gracefully", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({
+      sessionId: "sess-abc",
+      title: "No Usage",
+      state: "idle",
+      messageCount: 0,
+      lastMessageAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      config: {},
+      messages: [],
+    });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "show", "mx-test", "sess-abc"], { from: "user" });
+
+    expect(formatter.info).toHaveBeenCalledWith("Turns: 0");
+    expect(formatter.info).toHaveBeenCalledWith("Cost: -");
+    expect(formatter.info).toHaveBeenCalledWith("Input tokens: 0");
+    expect(formatter.info).toHaveBeenCalledWith("Output tokens: 0");
+    expect(formatter.info).toHaveBeenCalledWith("Duration: 0ms");
+  });
+
   it("sessions show reports error on failure", async () => {
     mockMechaSessionGet.mockRejectedValueOnce(new Error("not found"));
     const program = new Command();
@@ -294,6 +318,261 @@ describe("mecha sessions", () => {
     await program.parseAsync(["sessions", "rename", "mx-test", "sess-ren", "Title"], { from: "user" });
 
     expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("rename failed"));
+    expect(process.exitCode).toBe(1);
+  });
+
+  // --- sessions config show ---
+
+  it("sessions config show displays config fields", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({
+      sessionId: "sess-cfg",
+      title: "Config Session",
+      state: "idle",
+      messageCount: 0,
+      lastMessageAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      config: {
+        model: "claude-sonnet-4-5-20250514",
+        permissionMode: "plan",
+        systemPrompt: "You are helpful",
+        maxTurns: 10,
+        maxBudgetUsd: 5.0,
+      },
+      usage: ZERO_USAGE,
+      messages: [],
+    });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
+
+    expect(mockMechaSessionGet).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test", sessionId: "sess-cfg" });
+    expect(formatter.info).toHaveBeenCalledWith("Model: claude-sonnet-4-5-20250514");
+    expect(formatter.info).toHaveBeenCalledWith("Permission mode: plan");
+    expect(formatter.info).toHaveBeenCalledWith("System prompt: You are helpful");
+    expect(formatter.info).toHaveBeenCalledWith("Max turns: 10");
+    expect(formatter.info).toHaveBeenCalledWith("Max budget: $5");
+  });
+
+  it("sessions config show shows defaults for empty config", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({
+      sessionId: "sess-cfg",
+      title: "",
+      state: "idle",
+      messageCount: 0,
+      lastMessageAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      config: {},
+      usage: ZERO_USAGE,
+      messages: [],
+    });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
+
+    expect(formatter.info).toHaveBeenCalledWith("Model: (default)");
+    expect(formatter.info).toHaveBeenCalledWith("Permission mode: (default)");
+    expect(formatter.info).toHaveBeenCalledWith("System prompt: (none)");
+    expect(formatter.info).toHaveBeenCalledWith("Max turns: (unlimited)");
+    expect(formatter.info).toHaveBeenCalledWith("Max budget: (unlimited)");
+  });
+
+  it("sessions config show handles missing config object", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({
+      sessionId: "sess-cfg",
+      title: "",
+      state: "idle",
+      messageCount: 0,
+      lastMessageAt: null,
+      createdAt: "2026-01-01T00:00:00Z",
+      usage: ZERO_USAGE,
+      messages: [],
+      // no config field
+    });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
+
+    expect(formatter.info).toHaveBeenCalledWith("Model: (default)");
+    expect(formatter.info).toHaveBeenCalledWith("Max budget: (unlimited)");
+  });
+
+  it("sessions config show reports error on failure", async () => {
+    mockMechaSessionGet.mockRejectedValueOnce(new Error("not found"));
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-bad"], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("not found"));
+    expect(process.exitCode).toBe(1);
+  });
+
+  // --- sessions config set ---
+
+  const EXISTING_SESSION_WITH_CONFIG = {
+    sessionId: "sess-cfg",
+    title: "Existing",
+    state: "idle",
+    messageCount: 0,
+    lastMessageAt: null,
+    createdAt: "2026-01-01T00:00:00Z",
+    config: { model: "claude-sonnet-4-5-20250514", maxTurns: 5 },
+    usage: ZERO_USAGE,
+    messages: [],
+  };
+
+  it("sessions config set merges with existing config and shows success", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(EXISTING_SESSION_WITH_CONFIG);
+    mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--model", "claude-opus-4-20250514",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).toHaveBeenCalledWith(deps.dockerClient, {
+      id: "mx-test",
+      sessionId: "sess-cfg",
+      config: { model: "claude-opus-4-20250514", maxTurns: 5 },
+    });
+    expect(formatter.success).toHaveBeenCalledWith("Session sess-cfg config updated");
+  });
+
+  it("sessions config set passes all options correctly", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({ ...EXISTING_SESSION_WITH_CONFIG, config: {} });
+    mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--model", "claude-opus-4-20250514",
+      "--permission-mode", "full-auto",
+      "--system-prompt", "Be concise",
+      "--max-turns", "20",
+      "--max-budget", "10.5",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).toHaveBeenCalledWith(deps.dockerClient, {
+      id: "mx-test",
+      sessionId: "sess-cfg",
+      config: {
+        model: "claude-opus-4-20250514",
+        permissionMode: "full-auto",
+        systemPrompt: "Be concise",
+        maxTurns: 20,
+        maxBudgetUsd: 10.5,
+      },
+    });
+    expect(formatter.success).toHaveBeenCalledWith("Session sess-cfg config updated");
+  });
+
+  it("sessions config set errors when no options provided", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "config", "set", "mx-test", "sess-cfg"], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("No config options provided"));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set handles missing config on existing session", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({
+      ...EXISTING_SESSION_WITH_CONFIG,
+      config: undefined,
+    });
+    mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--model", "claude-opus-4-20250514",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).toHaveBeenCalledWith(deps.dockerClient, {
+      id: "mx-test",
+      sessionId: "sess-cfg",
+      config: { model: "claude-opus-4-20250514" },
+    });
+    expect(formatter.success).toHaveBeenCalledWith("Session sess-cfg config updated");
+  });
+
+  it("sessions config set rejects invalid permission mode", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--permission-mode", "yolo",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining('Invalid permission mode "yolo"'));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set rejects invalid max turns", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--max-turns", "abc",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining('Invalid max turns "abc"'));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set rejects non-positive max turns", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--max-turns", "0",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining('Invalid max turns "0"'));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set rejects invalid max budget", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--max-budget", "free",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining('Invalid max budget "free"'));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set rejects non-positive max budget", async () => {
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--max-budget", "0",
+    ], { from: "user" });
+
+    expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining('Invalid max budget "0"'));
+    expect(process.exitCode).toBe(1);
+  });
+
+  it("sessions config set reports error on failure", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce({ ...EXISTING_SESSION_WITH_CONFIG, config: {} });
+    mockMechaSessionConfigUpdate.mockRejectedValueOnce(new Error("update failed"));
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync([
+      "sessions", "config", "set", "mx-test", "sess-cfg",
+      "--model", "bad-model",
+    ], { from: "user" });
+
+    expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("update failed"));
     expect(process.exitCode).toBe(1);
   });
 });

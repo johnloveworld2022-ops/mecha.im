@@ -6,6 +6,7 @@ import {
   mechaSessionDelete,
   mechaSessionInterrupt,
   mechaSessionRename,
+  mechaSessionConfigUpdate,
 } from "@mecha/service";
 import { toUserMessage, toExitCode, type SessionUsageType as UsageStats } from "@mecha/contracts";
 
@@ -135,6 +136,96 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
       try {
         const result = await mechaSessionRename(dockerClient, { id, sessionId, title }) as SessionSummary;
         formatter.success(`Session ${sessionId} renamed to "${result.title}"`);
+      } catch (err) {
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
+      }
+    });
+
+  // --- config subcommands ---
+  const config = sessions
+    .command("config")
+    .description("View or update session configuration");
+
+  config
+    .command("show <id> <sessionId>")
+    .description("Show session configuration")
+    .action(async (id: string, sessionId: string) => {
+      const { dockerClient, formatter } = deps;
+      try {
+        const detail = await mechaSessionGet(dockerClient, { id, sessionId }) as SessionDetail;
+        const cfg = detail.config ?? {};
+        formatter.info(`Model: ${cfg.model ?? "(default)"}`);
+        formatter.info(`Permission mode: ${cfg.permissionMode ?? "(default)"}`);
+        formatter.info(`System prompt: ${cfg.systemPrompt ?? "(none)"}`);
+        formatter.info(`Max turns: ${cfg.maxTurns ?? "(unlimited)"}`);
+        formatter.info(`Max budget: ${cfg.maxBudgetUsd != null ? `$${cfg.maxBudgetUsd}` : "(unlimited)"}`);
+      } catch (err) {
+        formatter.error(toUserMessage(err));
+        process.exitCode = toExitCode(err);
+      }
+    });
+
+  config
+    .command("set <id> <sessionId>")
+    .description("Update session configuration")
+    .option("--model <model>", "Model name")
+    .option("--permission-mode <mode>", "Permission mode (default, plan, full-auto)")
+    .option("--system-prompt <prompt>", "System prompt")
+    .option("--max-turns <n>", "Maximum turns")
+    .option("--max-budget <usd>", "Maximum budget in USD")
+    .action(async (id: string, sessionId: string, opts: {
+      model?: string;
+      permissionMode?: string;
+      systemPrompt?: string;
+      maxTurns?: string;
+      maxBudget?: string;
+    }) => {
+      const { dockerClient, formatter } = deps;
+      try {
+        const configPayload: Record<string, unknown> = {};
+        if (opts.model !== undefined) configPayload.model = opts.model;
+        if (opts.permissionMode !== undefined) {
+          const validModes = ["default", "plan", "full-auto"];
+          if (!validModes.includes(opts.permissionMode)) {
+            formatter.error(`Invalid permission mode "${opts.permissionMode}". Must be one of: ${validModes.join(", ")}`);
+            process.exitCode = 1;
+            return;
+          }
+          configPayload.permissionMode = opts.permissionMode;
+        }
+        if (opts.systemPrompt !== undefined) configPayload.systemPrompt = opts.systemPrompt;
+        if (opts.maxTurns !== undefined) {
+          const n = Number(opts.maxTurns);
+          if (!Number.isFinite(n) || !Number.isInteger(n) || n < 1) {
+            formatter.error(`Invalid max turns "${opts.maxTurns}". Must be a positive integer.`);
+            process.exitCode = 1;
+            return;
+          }
+          configPayload.maxTurns = n;
+        }
+        if (opts.maxBudget !== undefined) {
+          const n = Number(opts.maxBudget);
+          if (!Number.isFinite(n) || n <= 0) {
+            formatter.error(`Invalid max budget "${opts.maxBudget}". Must be a positive number.`);
+            process.exitCode = 1;
+            return;
+          }
+          configPayload.maxBudgetUsd = n;
+        }
+
+        if (Object.keys(configPayload).length === 0) {
+          formatter.error("No config options provided. Use --model, --permission-mode, --system-prompt, --max-turns, or --max-budget.");
+          process.exitCode = 1;
+          return;
+        }
+
+        // Fetch current config and merge to avoid overwriting unset fields
+        const detail = await mechaSessionGet(dockerClient, { id, sessionId }) as SessionDetail;
+        const merged = { ...(detail.config ?? {}), ...configPayload };
+
+        await mechaSessionConfigUpdate(dockerClient, { id, sessionId, config: merged });
+        formatter.success(`Session ${sessionId} config updated`);
       } catch (err) {
         formatter.error(toUserMessage(err));
         process.exitCode = toExitCode(err);

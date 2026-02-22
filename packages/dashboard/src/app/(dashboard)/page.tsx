@@ -71,7 +71,7 @@ function MechaContent() {
     case "chat":
       return <ChatTab mechaId={selectedMechaId} sessionId={selectedSessionId} isRunning={isRunning} />;
     case "overview":
-      return <OverviewTab mechaId={selectedMechaId} isRunning={isRunning} />;
+      return <OverviewTab mechaId={selectedMechaId} sessionId={selectedSessionId} isRunning={isRunning} />;
     case "terminal":
       return <TerminalTab mechaId={selectedMechaId} isRunning={isRunning} />;
     case "inspect":
@@ -85,10 +85,12 @@ function MechaContent() {
 
 import { MechaChat } from "@/components/MechaChat";
 import { MechaOverview } from "@/components/overview/MechaOverview";
+import { SessionInfo, type SessionDetailData } from "@/components/sessions/SessionInfo";
+import { SessionConfigEditor } from "@/components/sessions/SessionConfigEditor";
 import { TerminalPanel } from "@/components/terminal/TerminalPanel";
 import { InspectPanel } from "@/components/inspect/InspectPanel";
 import { useDashboardStore as useStore } from "@/lib/store";
-import { useCallback } from "react";
+import { useCallback, useEffect, useState } from "react";
 
 function ChatTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessionId: string | null; isRunning: boolean }) {
   const setSessions = useStore((s) => s.setSessions);
@@ -135,7 +137,47 @@ function ChatTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessionId
   );
 }
 
-function OverviewTab({ mechaId, isRunning }: { mechaId: string; isRunning: boolean }) {
+function OverviewTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessionId: string | null; isRunning: boolean }) {
+  const [detail, setDetail] = useState<SessionDetailData | null>(null);
+  const [error, setError] = useState("");
+
+  const loadDetail = useCallback(async () => {
+    if (!sessionId || !isRunning) return;
+    setDetail(null);
+    setError("");
+    try {
+      const res = await fetch(`/api/mechas/${mechaId}/sessions/${sessionId}`);
+      if (!res.ok) {
+        setError(`Failed to load session (${res.status})`);
+        return;
+      }
+      setDetail(await res.json());
+    } catch {
+      setError("Failed to load session");
+    }
+  }, [mechaId, sessionId, isRunning]);
+
+  useEffect(() => { loadDetail(); }, [loadDetail]);
+
+  if (sessionId && isRunning) {
+    if (error) {
+      return <p className="text-sm text-destructive p-4 md:p-6">{error}</p>;
+    }
+    if (!detail) {
+      return <p className="text-sm text-muted-foreground p-4 md:p-6">Loading session...</p>;
+    }
+    return (
+      <div className="p-4 md:p-6 max-w-3xl space-y-6">
+        <SessionInfo detail={detail} sessionId={sessionId} />
+        <SessionConfigEditor
+          mechaId={mechaId}
+          sessionId={sessionId}
+          initialConfig={detail.config ?? {}}
+          onSaved={loadDetail}
+        />
+      </div>
+    );
+  }
   return <MechaOverview mechaId={mechaId} isRunning={isRunning} />;
 }
 
