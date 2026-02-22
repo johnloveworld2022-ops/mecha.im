@@ -68,6 +68,10 @@ interface DashboardState {
   collapsedNodes: Record<string, boolean>;
   toggleNodeCollapsed: (node: string) => void;
 
+  // Starred sessions (mechaId → sessionIds, persisted)
+  starredSessions: Record<string, string[]>;
+  toggleStarred: (mechaId: string, sessionId: string) => void;
+
   // Search
   searchQuery: string;
   setSearchQuery: (q: string) => void;
@@ -142,6 +146,21 @@ export const useDashboardStore = create<DashboardState>()(
           },
         })),
 
+      // Starred sessions
+      starredSessions: {},
+      toggleStarred: (mechaId, sessionId) =>
+        set((s) => {
+          const current = s.starredSessions[mechaId] ?? [];
+          const isCurrentlyStarred = current.includes(sessionId);
+          return {
+            starredSessions: {
+              ...s.starredSessions,
+              [mechaId]: isCurrentlyStarred
+                ? current.filter((id) => id !== sessionId)
+                : [...current, sessionId],
+            },
+          };
+        }),
       // Search
       searchQuery: "",
       setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -156,6 +175,7 @@ export const useDashboardStore = create<DashboardState>()(
         selectedMechaId: state.selectedMechaId,
         activeTab: state.activeTab,
         collapsedNodes: state.collapsedNodes,
+        starredSessions: state.starredSessions,
       }),
     },
   ),

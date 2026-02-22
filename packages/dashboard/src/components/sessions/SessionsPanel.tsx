@@ -43,18 +43,31 @@ function getDateGroup(dateStr: string | null): string {
   return "Older";
 }
 
-function groupSessions(sessions: Session[]): Array<{ label: string; sessions: Session[] }> {
+function groupSessions(sessions: Session[], starredIds: string[]): Array<{ label: string; sessions: Session[] }> {
+  const starredSet = new Set(starredIds);
+  const starred = sessions.filter((s) => starredSet.has(s.sessionId));
+  const unstarred = sessions.filter((s) => !starredSet.has(s.sessionId));
+
   const order = ["Today", "Yesterday", "Previous 7 days", "Older"];
   const groups = new Map<string, Session[]>();
 
-  for (const s of sessions) {
+  for (const s of unstarred) {
     const label = getDateGroup(s.lastMessageAt ?? s.createdAt);
     const arr = groups.get(label) ?? [];
     arr.push(s);
     groups.set(label, arr);
   }
 
-  return order.filter((l) => groups.has(l)).map((label) => ({ label, sessions: groups.get(label)! }));
+  const result: Array<{ label: string; sessions: Session[] }> = [];
+  if (starred.length > 0) {
+    result.push({ label: "Starred", sessions: starred });
+  }
+  for (const label of order) {
+    if (groups.has(label)) {
+      result.push({ label, sessions: groups.get(label)! });
+    }
+  }
+  return result;
 }
 
 export function SessionsPanel() {
@@ -71,6 +84,8 @@ export function SessionsPanel() {
   const setActiveTab = useDashboardStore((s) => s.setActiveTab);
   const searchQuery = useDashboardStore((s) => s.searchQuery);
   const setSearchQuery = useDashboardStore((s) => s.setSearchQuery);
+  const starredSessions = useDashboardStore((s) => s.starredSessions);
+  const toggleStarred = useDashboardStore((s) => s.toggleStarred);
 
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
@@ -87,7 +102,8 @@ export function SessionsPanel() {
       )
     : mechaSessions;
 
-  const grouped = groupSessions(filteredSessions);
+  const starredIds = selectedMechaId ? starredSessions[selectedMechaId] ?? [] : [];
+  const grouped = groupSessions(filteredSessions, starredIds);
 
   const createSession = useCallback(async () => {
     if (!selectedMechaId) return;
@@ -158,6 +174,11 @@ export function SessionsPanel() {
     } catch { /* network error — no state change */ }
   }, [selectedMechaId, updateSession]);
 
+  const handleStar = useCallback((sessionId: string) => {
+    if (!selectedMechaId) return;
+    toggleStarred(selectedMechaId, sessionId);
+  }, [selectedMechaId, toggleStarred]);
+
   const handleImport = useCallback(async () => {
     if (!selectedMechaId) return;
     try {
@@ -223,7 +244,7 @@ export function SessionsPanel() {
 
   if (!selectedMechaId) {
     return (
-      <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
+      <div className="flex h-full w-full flex-col bg-sidebar">
         <div className="flex items-center justify-between px-3 py-3">
           <span className="text-sm font-medium text-sidebar-foreground">Sessions</span>
         </div>
@@ -235,7 +256,7 @@ export function SessionsPanel() {
   }
 
   return (
-    <div className="flex h-full w-60 flex-col border-r border-border bg-sidebar">
+    <div className="flex h-full w-full flex-col bg-sidebar">
       {/* Header */}
       <div className="flex items-center justify-between px-3 py-3">
         <div className="flex flex-col min-w-0">
@@ -247,14 +268,9 @@ export function SessionsPanel() {
           </span>
         </div>
         {isRunning && (
-          <div className="flex items-center gap-0.5 shrink-0">
-            <TooltipIconButton tooltip="Import transcripts" variant="ghost" size="icon-xs" onClick={handleImport}>
-              <DownloadIcon className="size-3.5" />
-            </TooltipIconButton>
-            <TooltipIconButton tooltip="New session" variant="ghost" size="icon-xs" onClick={createSession}>
-              <PlusIcon className="size-3.5" />
-            </TooltipIconButton>
-          </div>
+          <TooltipIconButton tooltip="Import transcripts" variant="ghost" size="icon-xs" onClick={handleImport}>
+            <DownloadIcon className="size-3.5" />
+          </TooltipIconButton>
         )}
       </div>
 
@@ -265,8 +281,21 @@ export function SessionsPanel() {
         </div>
       )}
 
+      {/* New Chat */}
+      {isRunning && (
+        <div className="px-2 pb-1">
+          <button
+            onClick={createSession}
+            className="flex w-full items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-accent"
+          >
+            <PlusIcon className="size-4" />
+            New Chat
+          </button>
+        </div>
+      )}
+
       {/* Sessions list */}
-      <ScrollArea className="flex-1 px-2 py-1">
+      <ScrollArea className="flex-1 min-h-0 px-2 py-1">
         {loading ? (
           <div className="flex flex-col gap-2 p-2">
             {Array.from({ length: 3 }).map((_, i) => (
@@ -298,9 +327,11 @@ export function SessionsPanel() {
                     key={s.sessionId}
                     session={s}
                     isActive={selectedSessionId === s.sessionId}
+                    starred={starredIds.includes(s.sessionId)}
                     onClick={() => setSelectedSessionId(s.sessionId)}
                     onRename={handleRename}
                     onDelete={(sid) => setConfirmDelete(sid)}
+                    onStar={handleStar}
                     onInterrupt={handleInterrupt}
                   />
                 ))}

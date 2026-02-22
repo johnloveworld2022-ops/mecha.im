@@ -24,9 +24,9 @@ export function MechaRail() {
   }, [mechas]);
 
   return (
-    <div className="flex h-full w-16 flex-col items-center border-r border-border bg-sidebar">
+    <div className="flex h-full w-12 flex-col items-center border-r border-border bg-sidebar">
       {/* Logo / brand */}
-      <div className="flex size-16 shrink-0 items-center justify-center">
+      <div className="flex size-12 shrink-0 items-center justify-center">
         <LayoutDashboardIcon className="size-5 text-primary" />
       </div>
 

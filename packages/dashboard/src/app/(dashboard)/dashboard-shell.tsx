@@ -6,6 +6,11 @@ import { SessionsPanel } from "@/components/sessions/SessionsPanel";
 import { TopBar } from "@/components/layout/TopBar";
 import { EventStreamProvider } from "@/components/EventStreamProvider";
 import { Sheet, SheetContent } from "@/components/ui/sheet";
+import {
+  ResizablePanelGroup,
+  ResizablePanel,
+  ResizableHandle,
+} from "@/components/ui/resizable";
 import { useDashboardStore } from "@/lib/store";
 import { useIsMobile } from "@/hooks/use-mobile";
 
@@ -44,24 +49,37 @@ export function DashboardShell({ children }: { children: React.ReactNode }) {
         {/* Rail - always visible */}
         <MechaRail />
 
-        {/* Sessions Panel - sheet on mobile, fixed on desktop */}
+        {/* Sessions Panel - sheet on mobile, resizable on desktop */}
         {isMobile ? (
-          <Sheet open={sessionsPanelOpen} onOpenChange={setSessionsPanelOpen}>
-            <SheetContent side="left" className="w-60 p-0 pt-0">
-              <SessionsPanel />
-            </SheetContent>
-          </Sheet>
+          <>
+            <Sheet open={sessionsPanelOpen} onOpenChange={setSessionsPanelOpen}>
+              <SheetContent side="left" className="w-60 p-0 pt-0">
+                <SessionsPanel />
+              </SheetContent>
+            </Sheet>
+            <div className="flex flex-1 flex-col min-w-0">
+              <TopBar />
+              <main className="flex-1 overflow-auto">
+                {children}
+              </main>
+            </div>
+          </>
         ) : (
-          <SessionsPanel />
+          <ResizablePanelGroup orientation="horizontal" className="flex-1">
+            <ResizablePanel defaultSize="240px" minSize="180px" maxSize="400px">
+              <SessionsPanel />
+            </ResizablePanel>
+            <ResizableHandle />
+            <ResizablePanel minSize="50%">
+              <div className="flex h-full flex-col min-w-0">
+                <TopBar />
+                <main className="flex-1 overflow-auto">
+                  {children}
+                </main>
+              </div>
+            </ResizablePanel>
+          </ResizablePanelGroup>
         )}
-
-        {/* Main content area */}
-        <div className="flex flex-1 flex-col min-w-0">
-          <TopBar />
-          <main className="flex-1 overflow-auto">
-            {children}
-          </main>
-        </div>
       </div>
     </EventStreamProvider>
   );

@@ -124,7 +124,7 @@ export function SessionConfigEditor({ mechaId, sessionId, initialConfig, onSaved
               onChange={(e) => updateField("systemPrompt", e.target.value || undefined)}
               placeholder="(none)"
               rows={3}
-              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm ring-offset-background placeholder:text-muted-foreground focus-visible:outline-none focus-visible:ring-2 focus-visible:ring-ring focus-visible:ring-offset-2 resize-y min-h-20"
+              className="flex w-full rounded-md border border-input bg-background px-3 py-2 text-sm placeholder:text-muted-foreground outline-none resize-y min-h-20"
             />
           </fieldset>
 

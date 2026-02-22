@@ -1,13 +1,14 @@
 "use client";
 
 import { useState, useRef, useEffect, useCallback } from "react";
-import { CopyIcon, MoreHorizontalIcon, PencilIcon, SquareIcon, TrashIcon } from "lucide-react";
+import { ClockIcon, CopyIcon, MessageSquareIcon, MoreHorizontalIcon, PencilIcon, SquareIcon, StarIcon, TrashIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { Button } from "@/components/ui/button";
 import {
   DropdownMenu,
   DropdownMenuContent,
   DropdownMenuItem,
+  DropdownMenuSeparator,
   DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import type { Session } from "@/lib/store";
@@ -15,8 +16,10 @@ import type { Session } from "@/lib/store";
 interface SessionItemProps {
   session: Session;
   isActive: boolean;
+  starred?: boolean;
   onClick: () => void;
   onRename: (sessionId: string, newTitle: string) => void;
+  onStar: (sessionId: string) => void;
   onDelete: (sessionId: string) => void;
   onInterrupt: (sessionId: string) => void;
 }
@@ -35,7 +38,7 @@ function timeAgo(dateStr: string | null): string {
   return `${days}d`;
 }
 
-export function SessionItem({ session, isActive, onClick, onRename, onDelete, onInterrupt }: SessionItemProps) {
+export function SessionItem({ session, isActive, starred, onClick, onRename, onStar, onDelete, onInterrupt }: SessionItemProps) {
   const [editing, setEditing] = useState(false);
   const [editValue, setEditValue] = useState("");
   const inputRef = useRef<HTMLInputElement>(null);
@@ -113,38 +116,27 @@ export function SessionItem({ session, isActive, onClick, onRename, onDelete, on
                 session.state === "busy" ? "bg-warning" : "bg-success",
               )}
             />
-            <span className="flex-1 truncate" title={displayTitle}>
+            <span className="flex-1 break-words min-w-0" title={displayTitle}>
               {displayTitle}
             </span>
+            {starred && (
+              <StarIcon className="size-3 shrink-0 fill-current text-muted-foreground" />
+            )}
           </button>
-
-          <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
-            <span>{session.messageCount}</span>
-            {session.usage && session.usage.totalCostUsd > 0 && (
-              <span className="font-mono">
-                ${session.usage.totalCostUsd < 0.01
-                  ? session.usage.totalCostUsd.toFixed(4)
-                  : session.usage.totalCostUsd.toFixed(2)}
-              </span>
-            )}
-            {session.lastMessageAt && (
-              <span>{timeAgo(session.lastMessageAt)}</span>
-            )}
-          </span>
 
           <DropdownMenu>
             <DropdownMenuTrigger asChild>
-              <TooltipIconButton
-                tooltip="Session actions"
+              <Button
                 variant="ghost"
                 size="icon-xs"
-                className="shrink-0 sm:opacity-0 sm:group-hover:opacity-100"
+                aria-label="Session actions"
+                className={cn("shrink-0", !isActive && "sm:opacity-0 sm:group-hover:opacity-100")}
                 onClick={(e: React.MouseEvent) => e.stopPropagation()}
               >
                 <MoreHorizontalIcon className="size-3.5" />
-              </TooltipIconButton>
+              </Button>
             </DropdownMenuTrigger>
-            <DropdownMenuContent align="end" className="w-44">
+            <DropdownMenuContent align="end" className="w-44 border-border shadow-md">
               <DropdownMenuItem onClick={() => { navigator.clipboard.writeText(session.sessionId).catch(() => { /* clipboard unavailable in insecure context */ }); }}>
                 <CopyIcon className="size-4" />
                 Copy Session ID
@@ -152,6 +144,10 @@ export function SessionItem({ session, isActive, onClick, onRename, onDelete, on
               <DropdownMenuItem onClick={startRename}>
                 <PencilIcon className="size-4" />
                 Rename
+              </DropdownMenuItem>
+              <DropdownMenuItem onClick={() => onStar(session.sessionId)}>
+                <StarIcon className={cn("size-4", starred && "fill-current")} />
+                {starred ? "Unstar" : "Star"}
               </DropdownMenuItem>
               {session.state === "busy" && (
                 <DropdownMenuItem onClick={() => onInterrupt(session.sessionId)}>
@@ -166,6 +162,26 @@ export function SessionItem({ session, isActive, onClick, onRename, onDelete, on
                 <TrashIcon className="size-4" />
                 Delete
               </DropdownMenuItem>
+              <DropdownMenuSeparator />
+              <div className="flex items-center gap-2 px-2 py-1.5 text-sm text-muted-foreground">
+                <span className="flex items-center gap-2">
+                  <MessageSquareIcon className="size-4" />
+                  {session.messageCount}
+                </span>
+                {session.usage && session.usage.totalCostUsd > 0 && (
+                  <span className="font-mono">
+                    ${session.usage.totalCostUsd < 0.01
+                      ? session.usage.totalCostUsd.toFixed(4)
+                      : session.usage.totalCostUsd.toFixed(2)}
+                  </span>
+                )}
+                {session.lastMessageAt && (
+                  <span className="flex items-center gap-2">
+                    <ClockIcon className="size-4" />
+                    {timeAgo(session.lastMessageAt)}
+                  </span>
+                )}
+              </div>
             </DropdownMenuContent>
           </DropdownMenu>
         </>
