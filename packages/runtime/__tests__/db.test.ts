@@ -159,6 +159,34 @@ describe("SQLite database", () => {
     expect(indexes[0].name).toBe("idx_session_messages_session");
   });
 
+  it("sessions table has usage columns after migration 003", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const info = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
+    const cols = info.map((c) => c.name);
+    expect(cols).toContain("total_cost_usd");
+    expect(cols).toContain("total_input_tokens");
+    expect(cols).toContain("total_output_tokens");
+    expect(cols).toContain("total_duration_ms");
+    expect(cols).toContain("turn_count");
+  });
+
+  it("deleted_sessions table exists after migration 003", () => {
+    db = createDatabase(":memory:");
+    runMigrations(db);
+
+    const tables = db
+      .prepare("SELECT name FROM sqlite_master WHERE type='table' AND name='deleted_sessions'")
+      .all() as Array<{ name: string }>;
+    expect(tables).toHaveLength(1);
+
+    const info = db.prepare("PRAGMA table_info(deleted_sessions)").all() as Array<{ name: string }>;
+    const cols = info.map((c) => c.name);
+    expect(cols).toContain("sdk_session_id");
+    expect(cols).toContain("deleted_at");
+  });
+
   it("runMigrations is idempotent (can be called twice)", () => {
     db = createDatabase(":memory:");
     runMigrations(db);

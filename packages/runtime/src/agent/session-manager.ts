@@ -1,6 +1,6 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
-import { readdirSync, readFileSync } from "node:fs";
+import { readdirSync, readFileSync, unlinkSync } from "node:fs";
 import { join } from "node:path";
 import type { AgentOptions } from "./casa.js";
 import { PERMISSION_MAP } from "./casa.js";
@@ -21,7 +21,15 @@ export function resolveProjectDir(cwd: string): string {
 }
 
 export const MAX_SESSIONS = 50;
-export const SESSION_TTL_MS = 3_600_000; // 1 hour
+export const SESSION_TTL_MS = 365 * 24 * 3_600_000; // 365 days
+
+export interface UsageStats {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+  turnCount: number;
+}
 
 export interface SessionSummary {
   sessionId: string;
@@ -30,6 +38,7 @@ export interface SessionSummary {
   messageCount: number;
   lastMessageAt: string | null;
   createdAt: string;
+  usage: UsageStats;
 }
 
 export interface SessionMessage {
@@ -48,6 +57,24 @@ interface ActiveSession {
   abortController: AbortController;
 }
 
+const ZERO_USAGE: UsageStats = {
+  totalCostUsd: 0,
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalDurationMs: 0,
+  turnCount: 0,
+};
+
+function rowToUsage(row: Record<string, unknown>): UsageStats {
+  return {
+    totalCostUsd: (row.total_cost_usd as number) ?? 0,
+    totalInputTokens: (row.total_input_tokens as number) ?? 0,
+    totalOutputTokens: (row.total_output_tokens as number) ?? 0,
+    totalDurationMs: (row.total_duration_ms as number) ?? 0,
+    turnCount: (row.turn_count as number) ?? 0,
+  };
+}
+
 export class SessionManager {
   private active = new Map<string, ActiveSession>();
   private cleanupInterval: ReturnType<typeof setInterval> | null = null;
@@ -55,6 +82,7 @@ export class SessionManager {
   constructor(
     private db: Database.Database,
     private agentOpts: AgentOptions,
+    private projectDir?: string,
   ) {}
 
   create(opts?: { title?: string; config?: SessionConfigType }): SessionSummary {
@@ -80,6 +108,7 @@ export class SessionManager {
       messageCount: 0,
       lastMessageAt: null,
       createdAt: row.created_at,
+      usage: { ...ZERO_USAGE },
     };
   }
 
@@ -87,6 +116,8 @@ export class SessionManager {
     const row = this.db.prepare("SELECT * FROM sessions WHERE id = ?").get(id) as {
       id: string; sdk_session_id: string | null; title: string; state: string;
       config: string; created_at: string; updated_at: string; last_message_at: string | null;
+      total_cost_usd: number; total_input_tokens: number; total_output_tokens: number;
+      total_duration_ms: number; turn_count: number;
     } | undefined;
     if (!row) return undefined;
 
@@ -107,6 +138,7 @@ export class SessionManager {
       messageCount,
       lastMessageAt: row.last_message_at,
       createdAt: row.created_at,
+      usage: rowToUsage(row),
       config: JSON.parse(row.config) as SessionConfigType,
       messages: messages.map((m) => ({
         role: m.role as "user" | "assistant",
@@ -120,12 +152,16 @@ export class SessionManager {
   list(): SessionSummary[] {
     const rows = this.db.prepare(
       `SELECT s.id, s.title, s.state, s.created_at, s.last_message_at,
+              s.total_cost_usd, s.total_input_tokens, s.total_output_tokens,
+              s.total_duration_ms, s.turn_count,
               (SELECT COUNT(*) FROM session_messages WHERE session_id = s.id) as message_count
        FROM sessions s
        ORDER BY COALESCE(s.last_message_at, s.created_at) DESC`,
     ).all() as Array<{
       id: string; title: string; state: string; created_at: string;
       last_message_at: string | null; message_count: number;
+      total_cost_usd: number; total_input_tokens: number; total_output_tokens: number;
+      total_duration_ms: number; turn_count: number;
     }>;
 
     return rows.map((r) => ({
@@ -135,6 +171,7 @@ export class SessionManager {
       messageCount: r.message_count,
       lastMessageAt: r.last_message_at,
       createdAt: r.created_at,
+      usage: rowToUsage(r),
     }));
   }
 
@@ -143,10 +180,16 @@ export class SessionManager {
 
     const doRename = this.db.transaction(() => {
       const row = this.db.prepare(
-        "SELECT id, title, state, created_at, last_message_at, (SELECT COUNT(*) FROM session_messages WHERE session_id = sessions.id) as message_count FROM sessions WHERE id = ?",
+        `SELECT id, title, state, created_at, last_message_at,
+                total_cost_usd, total_input_tokens, total_output_tokens,
+                total_duration_ms, turn_count,
+                (SELECT COUNT(*) FROM session_messages WHERE session_id = sessions.id) as message_count
+         FROM sessions WHERE id = ?`,
       ).get(id) as {
         id: string; title: string; state: string; created_at: string;
         last_message_at: string | null; message_count: number;
+        total_cost_usd: number; total_input_tokens: number; total_output_tokens: number;
+        total_duration_ms: number; turn_count: number;
       } | undefined;
       if (!row) throw new SessionNotFoundError(id);
 
@@ -159,6 +202,7 @@ export class SessionManager {
           messageCount: row.message_count,
           lastMessageAt: row.last_message_at,
           createdAt: row.created_at,
+          usage: rowToUsage(row),
         } as SessionSummary;
       }
 
@@ -173,6 +217,7 @@ export class SessionManager {
         messageCount: row.message_count,
         lastMessageAt: row.last_message_at,
         createdAt: row.created_at,
+        usage: rowToUsage(row),
       } as SessionSummary;
     });
 
@@ -186,7 +231,33 @@ export class SessionManager {
       entry.abortController.abort();
       this.active.delete(id);
     }
-    const result = this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+
+    // Look up sdk_session_id before deleting for tombstone + JSONL cleanup
+    const row = this.db.prepare("SELECT sdk_session_id FROM sessions WHERE id = ?").get(id) as {
+      sdk_session_id: string | null;
+    } | undefined;
+
+    if (!row) return false;
+
+    const sdkSessionId = row.sdk_session_id;
+
+    const doDelete = this.db.transaction(() => {
+      if (sdkSessionId) {
+        this.db.prepare("INSERT OR IGNORE INTO deleted_sessions (sdk_session_id) VALUES (?)").run(sdkSessionId);
+      }
+      return this.db.prepare("DELETE FROM sessions WHERE id = ?").run(id);
+    });
+    const result = doDelete.immediate();
+
+    // Best-effort JSONL cleanup
+    if (sdkSessionId && this.projectDir) {
+      try {
+        unlinkSync(join(this.projectDir, `${sdkSessionId}.jsonl`));
+      } catch {
+        // Non-fatal: file may not exist
+      }
+    }
+
     return result.changes > 0;
   }
 
@@ -217,6 +288,7 @@ export class SessionManager {
 
     let assistantText = "";
     let caughtError: unknown = undefined;
+    let pendingUsage: { costUsd: number; inputTokens: number; outputTokens: number; durationMs: number } | null = null;
     try {
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -256,20 +328,55 @@ export class SessionManager {
           }
         }
 
+        // Capture usage from result event
+        if (sdkMsg.type === "result") {
+          const usage = sdkMsg.usage as Record<string, unknown> | undefined;
+          pendingUsage = {
+            costUsd: (sdkMsg.total_cost_usd as number) ?? 0,
+            inputTokens: (usage?.input_tokens as number) ?? 0,
+            outputTokens: (usage?.output_tokens as number) ?? 0,
+            durationMs: (sdkMsg.duration_ms as number) ?? 0,
+          };
+        }
+
         yield msg;
       }
     } catch (err) {
       caughtError = err;
     } finally {
-      // Always: save content, mark idle, clean up
-      if (assistantText) {
-        this.db.prepare(
-          "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'assistant', ?)",
-        ).run(sessionId, assistantText);
-      }
-      this.db.prepare(
-        "UPDATE sessions SET state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now') WHERE id = ?",
-      ).run(sessionId);
+      // Always: save content, update usage, mark idle, clean up
+      const finalize = this.db.transaction(() => {
+        if (assistantText) {
+          this.db.prepare(
+            "INSERT INTO session_messages (session_id, role, content) VALUES (?, 'assistant', ?)",
+          ).run(sessionId, assistantText);
+        }
+
+        if (pendingUsage) {
+          this.db.prepare(
+            `UPDATE sessions SET
+              turn_count = turn_count + 1,
+              total_cost_usd = total_cost_usd + ?,
+              total_input_tokens = total_input_tokens + ?,
+              total_output_tokens = total_output_tokens + ?,
+              total_duration_ms = total_duration_ms + ?,
+              state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now')
+            WHERE id = ?`,
+          ).run(
+            pendingUsage.costUsd,
+            pendingUsage.inputTokens,
+            pendingUsage.outputTokens,
+            pendingUsage.durationMs,
+            sessionId,
+          );
+        } else {
+          this.db.prepare(
+            "UPDATE sessions SET state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now') WHERE id = ?",
+          ).run(sessionId);
+        }
+      });
+      finalize();
+
       this.active.delete(sessionId);
     }
     if (caughtError) throw caughtError;
@@ -305,9 +412,42 @@ export class SessionManager {
 
   cleanup(): number {
     const cutoff = new Date(Date.now() - SESSION_TTL_MS).toISOString().replace("T", " ").slice(0, 19);
-    const result = this.db.prepare(
-      "DELETE FROM sessions WHERE state = 'idle' AND ((updated_at < ? AND last_message_at IS NULL) OR (last_message_at < ? AND updated_at < ?))",
-    ).run(cutoff, cutoff, cutoff);
+
+    // Collect sessions to expire for tombstoning
+    const expiredRows = this.db.prepare(
+      `SELECT id, sdk_session_id FROM sessions
+       WHERE state = 'idle'
+         AND ((updated_at < ? AND last_message_at IS NULL) OR (last_message_at < ? AND updated_at < ?))`,
+    ).all(cutoff, cutoff, cutoff) as Array<{ id: string; sdk_session_id: string | null }>;
+
+    let changes = 0;
+    if (expiredRows.length > 0) {
+      const doCleanup = this.db.transaction(() => {
+        for (const row of expiredRows) {
+          if (row.sdk_session_id) {
+            this.db.prepare("INSERT OR IGNORE INTO deleted_sessions (sdk_session_id) VALUES (?)").run(row.sdk_session_id);
+          }
+        }
+        const ids = expiredRows.map((r) => r.id);
+        const placeholders = ids.map(() => "?").join(",");
+        const result = this.db.prepare(
+          `DELETE FROM sessions WHERE id IN (${placeholders})`,
+        ).run(...ids);
+        changes = result.changes;
+      });
+      doCleanup.immediate();
+
+      // Best-effort JSONL cleanup after transaction
+      for (const row of expiredRows) {
+        if (row.sdk_session_id && this.projectDir) {
+          try {
+            unlinkSync(join(this.projectDir, `${row.sdk_session_id}.jsonl`));
+          } catch {
+            // Non-fatal
+          }
+        }
+      }
+    }
 
     // Also clean up from active map
     for (const id of this.active.keys()) {
@@ -316,7 +456,7 @@ export class SessionManager {
       if (!exists) this.active.delete(id);
     }
 
-    return result.changes;
+    return changes;
   }
 
   resetBusySessions(): void {
@@ -333,16 +473,27 @@ export class SessionManager {
 
     const checkExists = this.db.prepare("SELECT id FROM sessions WHERE sdk_session_id = ?");
     const insertSession = this.db.prepare(
-      "INSERT INTO sessions (id, sdk_session_id, title, config, created_at, updated_at, last_message_at) VALUES (?, ?, ?, '{}', ?, ?, ?)",
+      `INSERT INTO sessions (id, sdk_session_id, title, config, created_at, updated_at, last_message_at,
+        total_cost_usd, total_input_tokens, total_output_tokens, total_duration_ms, turn_count)
+       VALUES (?, ?, ?, '{}', ?, ?, ?, ?, ?, ?, ?, ?)`,
     );
     const insertMessage = this.db.prepare(
       "INSERT INTO session_messages (session_id, role, content, created_at) VALUES (?, ?, ?, ?)",
+    );
+
+    // Load tombstone set to prevent zombie re-imports
+    const tombstones = new Set(
+      (this.db.prepare("SELECT sdk_session_id FROM deleted_sessions").all() as Array<{ sdk_session_id: string }>)
+        .map((r) => r.sdk_session_id),
     );
 
     let imported = 0;
 
     for (const file of files) {
       const sdkSessionId = file.slice(0, -6); // strip .jsonl
+
+      // Skip tombstoned sessions
+      if (tombstones.has(sdkSessionId)) continue;
 
       if (checkExists.get(sdkSessionId)) continue;
 
@@ -351,6 +502,13 @@ export class SessionManager {
         .filter((l) => l.trim());
 
       const messages: Array<{ role: "user" | "assistant"; content: string; timestamp: string }> = [];
+
+      // Usage accumulators from result events
+      let costUsd = 0;
+      let inputTokens = 0;
+      let outputTokens = 0;
+      let durationMs = 0;
+      let turnCount = 0;
 
       for (const line of lines) {
         let parsed: Record<string, unknown>;
@@ -376,6 +534,16 @@ export class SessionManager {
           }
           if (content) messages.push({ role, content, timestamp });
         }
+
+        // Extract usage from result events
+        if (parsed.type === "result") {
+          const usage = parsed.usage as Record<string, unknown> | undefined;
+          costUsd += (parsed.total_cost_usd as number) ?? 0;
+          inputTokens += (usage?.input_tokens as number) ?? 0;
+          outputTokens += (usage?.output_tokens as number) ?? 0;
+          durationMs += (parsed.duration_ms as number) ?? 0;
+          turnCount++;
+        }
       }
 
       if (messages.length === 0) continue;
@@ -389,7 +557,8 @@ export class SessionManager {
       const lastMessageAt = lastTimestamp.replace("T", " ").slice(0, 19);
 
       const insertAll = this.db.transaction(() => {
-        insertSession.run(id, sdkSessionId, title, createdAt, createdAt, lastMessageAt);
+        insertSession.run(id, sdkSessionId, title, createdAt, createdAt, lastMessageAt,
+          costUsd, inputTokens, outputTokens, durationMs, turnCount);
         for (const m of messages) {
           const ts = m.timestamp.replace("T", " ").slice(0, 19);
           insertMessage.run(id, m.role, m.content, ts);

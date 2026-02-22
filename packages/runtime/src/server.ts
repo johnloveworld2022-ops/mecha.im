@@ -54,9 +54,9 @@ export function createServer(opts: ServerOptions): FastifyInstance {
   const agentOpts: AgentOptions | undefined = opts.agent ? { mechaId: opts.mechaId, ...opts.agent } : undefined;
   let sessionManager: SessionManager | undefined;
   if (opts.db && agentOpts) {
-    sessionManager = new SessionManager(opts.db, agentOpts);
-    sessionManager.resetBusySessions();
     const projectDir = resolveProjectDir(agentOpts.workingDirectory ?? "/home/mecha");
+    sessionManager = new SessionManager(opts.db, agentOpts, projectDir);
+    sessionManager.resetBusySessions();
     sessionManager.importTranscripts(projectDir);
     registerSessionRoutes(app, sessionManager, projectDir);
     sessionManager.startCleanup();

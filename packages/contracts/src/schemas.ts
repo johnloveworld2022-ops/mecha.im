@@ -150,6 +150,15 @@ export type MechaChatInput = z.infer<typeof MechaChatInput>;
 
 // --- Session schemas ---
 
+export const SessionUsage = z.object({
+  totalCostUsd: z.number(),
+  totalInputTokens: z.number(),
+  totalOutputTokens: z.number(),
+  totalDurationMs: z.number(),
+  turnCount: z.number(),
+});
+export type SessionUsage = z.infer<typeof SessionUsage>;
+
 export const SessionConfig = z.object({
   maxTurns:       z.number().int().positive().optional(),
   systemPrompt:   z.string().optional(),

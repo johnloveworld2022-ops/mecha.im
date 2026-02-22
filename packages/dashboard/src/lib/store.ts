@@ -18,6 +18,14 @@ export interface MechaWithNode extends MechaInfo {
   node: string;
 }
 
+export interface SessionUsage {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+  turnCount: number;
+}
+
 export interface Session {
   sessionId: string;
   title: string;
@@ -25,6 +33,7 @@ export interface Session {
   messageCount: number;
   lastMessageAt: string | null;
   createdAt: string;
+  usage?: SessionUsage;
 }
 
 export type ActiveTab = "chat" | "overview" | "terminal" | "inspect";

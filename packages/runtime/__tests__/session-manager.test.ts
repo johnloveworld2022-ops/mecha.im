@@ -1,6 +1,6 @@
 import { describe, it, expect, beforeEach, afterEach, vi } from "vitest";
 import type Database from "better-sqlite3";
-import { mkdtempSync, writeFileSync, mkdirSync } from "node:fs";
+import { mkdtempSync, writeFileSync, existsSync } from "node:fs";
 import { join } from "node:path";
 import { tmpdir } from "node:os";
 import { createDatabase, runMigrations } from "../src/db/sqlite.js";
@@ -46,7 +46,7 @@ describe("SessionManager", () => {
 
   // --- create ---
 
-  it("create() returns session with uuid, idle state", () => {
+  it("create() returns session with uuid, idle state, zero usage", () => {
     const session = sm.create();
     expect(session.sessionId).toMatch(
       /^[0-9a-f]{8}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{4}-[0-9a-f]{12}$/,
@@ -56,6 +56,13 @@ describe("SessionManager", () => {
     expect(session.messageCount).toBe(0);
     expect(session.lastMessageAt).toBeNull();
     expect(typeof session.createdAt).toBe("string");
+    expect(session.usage).toEqual({
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalDurationMs: 0,
+      turnCount: 0,
+    });
   });
 
   it("create() at MAX_SESSIONS cap throws SessionCapReachedError", () => {
@@ -87,9 +94,22 @@ describe("SessionManager", () => {
     expect(result).toBeUndefined();
   });
 
+  it("get() includes usage field", () => {
+    const session = sm.create();
+    const detail = sm.get(session.sessionId);
+    expect(detail).toBeDefined();
+    expect(detail!.usage).toEqual({
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalDurationMs: 0,
+      turnCount: 0,
+    });
+  });
+
   // --- list ---
 
-  it("list() returns sessions ordered by last_message_at desc", () => {
+  it("list() returns sessions ordered by last_message_at desc with usage", () => {
     // Create three sessions with different updated_at times
     db.prepare(
       "INSERT INTO sessions (id, title, config, last_message_at) VALUES ('s1', 'first', '{}', '2024-01-01 00:00:00')",
@@ -106,6 +126,11 @@ describe("SessionManager", () => {
     expect(sessions[0].sessionId).toBe("s2");
     expect(sessions[1].sessionId).toBe("s3");
     expect(sessions[2].sessionId).toBe("s1");
+    // Every session has usage
+    for (const s of sessions) {
+      expect(s.usage).toBeDefined();
+      expect(s.usage.turnCount).toBe(0);
+    }
   });
 
   // --- delete ---
@@ -131,8 +156,6 @@ describe("SessionManager", () => {
     // Add to active map with an abort controller
     const abortController = new AbortController();
     const abortSpy = vi.spyOn(abortController, "abort");
-    // Access the private active map through the manager
-    // We use Object.defineProperty workaround or cast to access private
     (sm as unknown as { active: Map<string, { abortController: AbortController }> }).active.set(
       session.sessionId,
       { abortController },
@@ -144,13 +167,60 @@ describe("SessionManager", () => {
     expect(sm.get(session.sessionId)).toBeUndefined();
   });
 
+  it("delete() records tombstone in deleted_sessions", () => {
+    const session = sm.create();
+    // Set sdk_session_id
+    db.prepare("UPDATE sessions SET sdk_session_id = 'sdk-tomb-1' WHERE id = ?").run(session.sessionId);
+
+    sm.delete(session.sessionId);
+
+    const tombstone = db.prepare("SELECT sdk_session_id FROM deleted_sessions WHERE sdk_session_id = 'sdk-tomb-1'").get();
+    expect(tombstone).toBeDefined();
+  });
+
+  it("delete() best-effort unlinks JSONL file", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "mecha-del-test-"));
+    const smWithDir = new SessionManager(db, AGENT_OPTS, tmpDir);
+    const session = smWithDir.create();
+    db.prepare("UPDATE sessions SET sdk_session_id = 'sdk-del-jsonl' WHERE id = ?").run(session.sessionId);
+
+    // Create the JSONL file
+    const jsonlPath = join(tmpDir, "sdk-del-jsonl.jsonl");
+    writeFileSync(jsonlPath, '{"type":"user","message":{"content":"hi"}}');
+    expect(existsSync(jsonlPath)).toBe(true);
+
+    smWithDir.delete(session.sessionId);
+    expect(existsSync(jsonlPath)).toBe(false);
+  });
+
+  it("delete() succeeds when JSONL file doesn't exist", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "mecha-del-nojsonl-"));
+    const smWithDir = new SessionManager(db, AGENT_OPTS, tmpDir);
+    const session = smWithDir.create();
+    db.prepare("UPDATE sessions SET sdk_session_id = 'sdk-no-file' WHERE id = ?").run(session.sessionId);
+
+    // Don't create the JSONL file — delete should still succeed
+    const deleted = smWithDir.delete(session.sessionId);
+    expect(deleted).toBe(true);
+  });
+
+  it("delete() without projectDir skips JSONL cleanup", () => {
+    const session = sm.create();
+    db.prepare("UPDATE sessions SET sdk_session_id = 'sdk-nodir' WHERE id = ?").run(session.sessionId);
+
+    // sm has no projectDir — should not throw
+    const deleted = sm.delete(session.sessionId);
+    expect(deleted).toBe(true);
+  });
+
   // --- rename ---
 
-  it("rename() updates title and returns updated summary", () => {
+  it("rename() updates title and returns updated summary with usage", () => {
     const session = sm.create({ title: "Old Title" });
     const result = sm.rename(session.sessionId, "New Title");
     expect(result.title).toBe("New Title");
     expect(result.sessionId).toBe(session.sessionId);
+    expect(result.usage).toBeDefined();
 
     // Verify persistence
     const fromDb = sm.get(session.sessionId);
@@ -344,6 +414,89 @@ describe("SessionManager", () => {
     expect(updated?.state).toBe("idle");
   });
 
+  it("sendMessage() captures result event usage", async () => {
+    const session = sm.create();
+
+    mockQuery.mockReturnValue(
+      createMockStream([
+        {
+          type: "assistant",
+          message: { content: [{ type: "text", text: "Hi" }] },
+          session_id: "sdk-usage",
+        },
+        {
+          type: "result",
+          total_cost_usd: 0.0035,
+          duration_ms: 1500,
+          usage: { input_tokens: 100, output_tokens: 50 },
+          session_id: "sdk-usage",
+        },
+      ]),
+    );
+
+    for await (const _msg of sm.sendMessage(session.sessionId, "hello")) {
+      // consume
+    }
+
+    const detail = sm.get(session.sessionId);
+    expect(detail?.usage.totalCostUsd).toBe(0.0035);
+    expect(detail?.usage.totalInputTokens).toBe(100);
+    expect(detail?.usage.totalOutputTokens).toBe(50);
+    expect(detail?.usage.totalDurationMs).toBe(1500);
+    expect(detail?.usage.turnCount).toBe(1);
+  });
+
+  it("sendMessage() without result event keeps usage at zero", async () => {
+    const session = sm.create();
+
+    mockQuery.mockReturnValue(
+      createMockStream([
+        {
+          type: "assistant",
+          message: { content: [{ type: "text", text: "No result event" }] },
+          session_id: "sdk-noresult",
+        },
+      ]),
+    );
+
+    for await (const _msg of sm.sendMessage(session.sessionId, "hello")) {
+      // consume
+    }
+
+    const detail = sm.get(session.sessionId);
+    expect(detail?.usage.totalCostUsd).toBe(0);
+    expect(detail?.usage.turnCount).toBe(0);
+  });
+
+  it("sendMessage() accumulates usage across multiple calls", async () => {
+    const session = sm.create();
+
+    // First call
+    mockQuery.mockReturnValue(
+      createMockStream([
+        { type: "assistant", message: { content: [{ type: "text", text: "1" }] }, session_id: "sdk-acc" },
+        { type: "result", total_cost_usd: 0.01, duration_ms: 1000, usage: { input_tokens: 50, output_tokens: 25 } },
+      ]),
+    );
+    for await (const _msg of sm.sendMessage(session.sessionId, "msg1")) { /* consume */ }
+
+    // Second call
+    mockQuery.mockReturnValue(
+      createMockStream([
+        { type: "assistant", message: { content: [{ type: "text", text: "2" }] }, session_id: "sdk-acc" },
+        { type: "result", total_cost_usd: 0.02, duration_ms: 2000, usage: { input_tokens: 100, output_tokens: 75 } },
+      ]),
+    );
+    for await (const _msg of sm.sendMessage(session.sessionId, "msg2")) { /* consume */ }
+
+    const detail = sm.get(session.sessionId);
+    expect(detail?.usage.totalCostUsd).toBeCloseTo(0.03);
+    expect(detail?.usage.totalInputTokens).toBe(150);
+    expect(detail?.usage.totalOutputTokens).toBe(100);
+    expect(detail?.usage.totalDurationMs).toBe(3000);
+    expect(detail?.usage.turnCount).toBe(2);
+  });
+
   // --- interrupt ---
 
   it("interrupt() on busy: aborts, returns true", () => {
@@ -443,6 +596,34 @@ describe("SessionManager", () => {
     const session = sm.get("busy-old");
     expect(session).toBeDefined();
     expect(session?.state).toBe("busy");
+  });
+
+  it("cleanup() records tombstones for expired sessions", () => {
+    db.prepare(
+      "INSERT INTO sessions (id, sdk_session_id, title, config, updated_at, last_message_at) VALUES ('old-tomb', 'sdk-old-tomb', '', '{}', '2020-01-01 00:00:00', '2020-01-01 00:00:00')",
+    ).run();
+
+    sm.cleanup();
+
+    const tombstone = db.prepare("SELECT sdk_session_id FROM deleted_sessions WHERE sdk_session_id = 'sdk-old-tomb'").get();
+    expect(tombstone).toBeDefined();
+  });
+
+  it("cleanup() best-effort unlinks JSONL files for expired sessions", () => {
+    const tmpDir = mkdtempSync(join(tmpdir(), "mecha-cleanup-test-"));
+    const smWithDir = new SessionManager(db, AGENT_OPTS, tmpDir);
+
+    db.prepare(
+      "INSERT INTO sessions (id, sdk_session_id, title, config, updated_at, last_message_at) VALUES ('old-jsonl', 'sdk-old-jsonl', '', '{}', '2020-01-01 00:00:00', '2020-01-01 00:00:00')",
+    ).run();
+
+    const jsonlPath = join(tmpDir, "sdk-old-jsonl.jsonl");
+    writeFileSync(jsonlPath, '{"type":"user"}');
+    expect(existsSync(jsonlPath)).toBe(true);
+
+    smWithDir.cleanup();
+
+    expect(existsSync(jsonlPath)).toBe(false);
   });
 
   // --- create with options ---
@@ -990,6 +1171,74 @@ describe("SessionManager", () => {
 
       sm.importTranscripts(dir);
       expect(sm.list()[0].title).toBe("");
+    });
+
+    it("skips tombstoned sdk_session_ids", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-tombstoned.jsonl", [
+        { type: "user", message: { content: "I was deleted" }, timestamp: "2024-06-01T10:00:00Z" },
+      ]);
+
+      // Insert tombstone
+      db.prepare("INSERT INTO deleted_sessions (sdk_session_id) VALUES ('sdk-tombstoned')").run();
+
+      expect(sm.importTranscripts(dir)).toBe(0);
+      expect(sm.list()).toHaveLength(0);
+    });
+
+    it("extracts usage from result event lines", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-with-result.jsonl", [
+        { type: "user", message: { content: "hello" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "Hi!" }] }, timestamp: "2024-06-01T10:00:05Z" },
+        { type: "result", total_cost_usd: 0.005, duration_ms: 2000, usage: { input_tokens: 200, output_tokens: 100 }, timestamp: "2024-06-01T10:00:06Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].usage.totalCostUsd).toBe(0.005);
+      expect(sessions[0].usage.totalInputTokens).toBe(200);
+      expect(sessions[0].usage.totalOutputTokens).toBe(100);
+      expect(sessions[0].usage.totalDurationMs).toBe(2000);
+      expect(sessions[0].usage.turnCount).toBe(1);
+    });
+
+    it("accumulates usage from multiple result events in JSONL", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-multi-result.jsonl", [
+        { type: "user", message: { content: "msg1" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "r1" }] }, timestamp: "2024-06-01T10:00:05Z" },
+        { type: "result", total_cost_usd: 0.01, duration_ms: 1000, usage: { input_tokens: 50, output_tokens: 25 } },
+        { type: "user", message: { content: "msg2" }, timestamp: "2024-06-01T10:01:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "r2" }] }, timestamp: "2024-06-01T10:01:05Z" },
+        { type: "result", total_cost_usd: 0.02, duration_ms: 2000, usage: { input_tokens: 100, output_tokens: 75 } },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].usage.totalCostUsd).toBeCloseTo(0.03);
+      expect(sessions[0].usage.totalInputTokens).toBe(150);
+      expect(sessions[0].usage.totalOutputTokens).toBe(100);
+      expect(sessions[0].usage.totalDurationMs).toBe(3000);
+      expect(sessions[0].usage.turnCount).toBe(2);
+    });
+
+    it("imported sessions with no result events have zero usage", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-no-result.jsonl", [
+        { type: "user", message: { content: "hello" }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { content: [{ type: "text", text: "Hi!" }] }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const sessions = sm.list();
+      expect(sessions[0].usage).toEqual({
+        totalCostUsd: 0,
+        totalInputTokens: 0,
+        totalOutputTokens: 0,
+        totalDurationMs: 0,
+        turnCount: 0,
+      });
     });
   });
 });

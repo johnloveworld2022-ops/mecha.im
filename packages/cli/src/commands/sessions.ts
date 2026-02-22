@@ -9,6 +9,14 @@ import {
 } from "@mecha/service";
 import { toUserMessage, toExitCode } from "@mecha/contracts";
 
+interface UsageStats {
+  totalCostUsd: number;
+  totalInputTokens: number;
+  totalOutputTokens: number;
+  totalDurationMs: number;
+  turnCount: number;
+}
+
 interface SessionSummary {
   sessionId: string;
   title: string;
@@ -16,6 +24,7 @@ interface SessionSummary {
   messageCount: number;
   lastMessageAt: string | null;
   createdAt: string;
+  usage: UsageStats;
 }
 
 interface SessionMessage {
@@ -27,6 +36,12 @@ interface SessionMessage {
 interface SessionDetail extends SessionSummary {
   config: Record<string, unknown>;
   messages: SessionMessage[];
+}
+
+function formatCost(usd: number): string {
+  if (usd === 0) return "-";
+  if (usd < 0.01) return `$${usd.toFixed(4)}`;
+  return `$${usd.toFixed(2)}`;
 }
 
 export function registerSessionsCommand(parent: Command, deps: CommandDeps): void {
@@ -47,9 +62,11 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
             TITLE: s.title || "(untitled)",
             STATE: s.state,
             MESSAGES: String(s.messageCount),
+            TURNS: String(s.usage?.turnCount ?? 0),
+            COST: formatCost(s.usage?.totalCostUsd ?? 0),
             "LAST ACTIVITY": s.lastMessageAt ?? "-",
           })),
-          ["ID", "TITLE", "STATE", "MESSAGES", "LAST ACTIVITY"],
+          ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
         );
       } catch (err) {
         formatter.error(toUserMessage(err));
@@ -69,6 +86,13 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
         formatter.info(`State: ${detail.state}`);
         formatter.info(`Messages: ${detail.messageCount}`);
         formatter.info(`Created: ${detail.createdAt}`);
+        if (detail.usage) {
+          formatter.info(`Turns: ${detail.usage.turnCount}`);
+          formatter.info(`Cost: ${formatCost(detail.usage.totalCostUsd)}`);
+          formatter.info(`Input tokens: ${detail.usage.totalInputTokens}`);
+          formatter.info(`Output tokens: ${detail.usage.totalOutputTokens}`);
+          formatter.info(`Duration: ${detail.usage.totalDurationMs}ms`);
+        }
         if (detail.messages.length > 0) {
           formatter.info("---");
           for (const msg of detail.messages) {

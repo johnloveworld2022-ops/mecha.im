@@ -22,6 +22,14 @@ function createMockFormatter(): Formatter {
   return { info: vi.fn(), error: vi.fn(), success: vi.fn(), json: vi.fn(), table: vi.fn() };
 }
 
+const ZERO_USAGE = {
+  totalCostUsd: 0,
+  totalInputTokens: 0,
+  totalOutputTokens: 0,
+  totalDurationMs: 0,
+  turnCount: 0,
+};
+
 describe("mecha sessions", () => {
   let formatter: Formatter;
   let deps: CommandDeps;
@@ -35,7 +43,7 @@ describe("mecha sessions", () => {
 
   // --- sessions list ---
 
-  it("sessions list calls mechaSessionList and outputs table", async () => {
+  it("sessions list calls mechaSessionList and outputs table with TURNS and COST", async () => {
     mockMechaSessionList.mockResolvedValueOnce([
       {
         sessionId: "abcdef1234567890",
@@ -44,6 +52,7 @@ describe("mecha sessions", () => {
         messageCount: 5,
         lastMessageAt: "2026-01-01T00:00:00Z",
         createdAt: "2026-01-01T00:00:00Z",
+        usage: { totalCostUsd: 0.0035, totalInputTokens: 200, totalOutputTokens: 100, totalDurationMs: 1500, turnCount: 3 },
       },
     ]);
     const program = new Command();
@@ -58,10 +67,12 @@ describe("mecha sessions", () => {
           TITLE: "My Session",
           STATE: "idle",
           MESSAGES: "5",
+          TURNS: "3",
+          COST: "$0.0035",
           "LAST ACTIVITY": "2026-01-01T00:00:00Z",
         },
       ],
-      ["ID", "TITLE", "STATE", "MESSAGES", "LAST ACTIVITY"],
+      ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
     );
   });
 
@@ -74,6 +85,7 @@ describe("mecha sessions", () => {
         messageCount: 0,
         lastMessageAt: null,
         createdAt: "2026-01-01T00:00:00Z",
+        usage: ZERO_USAGE,
       },
     ]);
     const program = new Command();
@@ -87,10 +99,12 @@ describe("mecha sessions", () => {
           TITLE: "(untitled)",
           STATE: "idle",
           MESSAGES: "0",
+          TURNS: "0",
+          COST: "-",
           "LAST ACTIVITY": "-",
         },
       ],
-      ["ID", "TITLE", "STATE", "MESSAGES", "LAST ACTIVITY"],
+      ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
     );
   });
 
@@ -113,9 +127,31 @@ describe("mecha sessions", () => {
     expect(process.exitCode).toBe(1);
   });
 
+  it("sessions list handles missing usage gracefully", async () => {
+    mockMechaSessionList.mockResolvedValueOnce([
+      {
+        sessionId: "abcdef1234567890",
+        title: "No Usage",
+        state: "idle",
+        messageCount: 1,
+        lastMessageAt: null,
+        createdAt: "2026-01-01T00:00:00Z",
+        // no usage field
+      },
+    ]);
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "list", "mx-test"], { from: "user" });
+
+    expect(formatter.table).toHaveBeenCalledWith(
+      [expect.objectContaining({ TURNS: "0", COST: "-" })],
+      expect.any(Array),
+    );
+  });
+
   // --- sessions show ---
 
-  it("sessions show calls mechaSessionGet and shows detail", async () => {
+  it("sessions show calls mechaSessionGet and shows detail with usage", async () => {
     mockMechaSessionGet.mockResolvedValueOnce({
       sessionId: "sess-abc",
       title: "Test Session",
@@ -124,6 +160,7 @@ describe("mecha sessions", () => {
       lastMessageAt: null,
       createdAt: "2026-01-01T00:00:00Z",
       config: {},
+      usage: { totalCostUsd: 0.15, totalInputTokens: 500, totalOutputTokens: 250, totalDurationMs: 3000, turnCount: 5 },
       messages: [
         { role: "user", content: "Hello", createdAt: "2026-01-01T00:00:01Z" },
         { role: "assistant", content: "Hi!", createdAt: "2026-01-01T00:00:02Z" },
@@ -138,6 +175,11 @@ describe("mecha sessions", () => {
     expect(formatter.info).toHaveBeenCalledWith("Title: Test Session");
     expect(formatter.info).toHaveBeenCalledWith("State: idle");
     expect(formatter.info).toHaveBeenCalledWith("Messages: 2");
+    expect(formatter.info).toHaveBeenCalledWith("Turns: 5");
+    expect(formatter.info).toHaveBeenCalledWith("Cost: $0.15");
+    expect(formatter.info).toHaveBeenCalledWith("Input tokens: 500");
+    expect(formatter.info).toHaveBeenCalledWith("Output tokens: 250");
+    expect(formatter.info).toHaveBeenCalledWith("Duration: 3000ms");
     expect(formatter.info).toHaveBeenCalledWith("---");
     expect(formatter.info).toHaveBeenCalledWith("[user] Hello");
     expect(formatter.info).toHaveBeenCalledWith("[assistant] Hi!");
@@ -152,6 +194,7 @@ describe("mecha sessions", () => {
       lastMessageAt: null,
       createdAt: "2026-01-01T00:00:00Z",
       config: {},
+      usage: ZERO_USAGE,
       messages: [],
     });
     const program = new Command();
@@ -234,6 +277,7 @@ describe("mecha sessions", () => {
       messageCount: 3,
       lastMessageAt: null,
       createdAt: "2026-01-01T00:00:00Z",
+      usage: ZERO_USAGE,
     });
     const program = new Command();
     registerSessionsCommand(program, deps);

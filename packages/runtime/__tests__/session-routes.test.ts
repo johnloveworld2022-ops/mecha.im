@@ -56,7 +56,7 @@ describe("Session routes", () => {
 
   // --- POST /api/sessions ---
 
-  it("POST /api/sessions returns 201 with session data", async () => {
+  it("POST /api/sessions returns 201 with session data including usage", async () => {
     ({ app, db } = createTestApp());
     const res = await app.inject({
       method: "POST",
@@ -69,6 +69,13 @@ describe("Session routes", () => {
     expect(body.sessionId).toBeDefined();
     expect(body.state).toBe("idle");
     expect(body.title).toBe("Test Session");
+    expect(body.usage).toEqual({
+      totalCostUsd: 0,
+      totalInputTokens: 0,
+      totalOutputTokens: 0,
+      totalDurationMs: 0,
+      turnCount: 0,
+    });
   });
 
   it("POST /api/sessions without agent config returns 503", async () => {
@@ -106,7 +113,7 @@ describe("Session routes", () => {
 
   // --- GET /api/sessions ---
 
-  it("GET /api/sessions returns array", async () => {
+  it("GET /api/sessions returns array with usage", async () => {
     ({ app, db } = createTestApp());
     // Create a session via the API
     await app.inject({
@@ -125,11 +132,13 @@ describe("Session routes", () => {
     expect(Array.isArray(body)).toBe(true);
     expect(body.length).toBeGreaterThanOrEqual(1);
     expect(body[0].title).toBe("Listed");
+    expect(body[0].usage).toBeDefined();
+    expect(body[0].usage.turnCount).toBe(0);
   });
 
   // --- GET /api/sessions/:id ---
 
-  it("GET /api/sessions/:id returns session with messages", async () => {
+  it("GET /api/sessions/:id returns session with messages and usage", async () => {
     ({ app, db } = createTestApp());
     const createRes = await app.inject({
       method: "POST",
@@ -154,6 +163,8 @@ describe("Session routes", () => {
     expect(body.messages).toHaveLength(1);
     expect(body.messages[0].role).toBe("user");
     expect(body.messages[0].content).toBe("test msg");
+    expect(body.usage).toBeDefined();
+    expect(body.usage.totalCostUsd).toBe(0);
   });
 
   it("GET /api/sessions/:id bad id returns 404", async () => {
