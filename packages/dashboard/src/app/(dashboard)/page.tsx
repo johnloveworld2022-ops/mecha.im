@@ -113,10 +113,20 @@ function ChatTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessionId
     );
   }
 
+  if (!sessionId) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="text-sm text-muted-foreground">
+          Creating session...
+        </p>
+      </div>
+    );
+  }
+
   return (
     <div className="h-full">
       <MechaChat
-        key={sessionId ?? "stateless"}
+        key={sessionId}
         mechaId={mechaId}
         sessionId={sessionId}
         onStreamComplete={handleStreamComplete}

@@ -9,8 +9,7 @@ import { Skeleton } from "@/components/ui/skeleton";
 import { SessionItem } from "./SessionItem";
 import { SessionSearch } from "./SessionSearch";
 import { SessionTabs } from "./SessionTabs";
-import { useDashboardStore } from "@/lib/store";
-import { cn } from "@/lib/utils";
+import { useDashboardStore, type Session } from "@/lib/store";
 
 export function SessionsPanel() {
   const selectedMechaId = useDashboardStore((s) => s.selectedMechaId);
@@ -39,24 +38,6 @@ export function SessionsPanel() {
       )
     : mechaSessions;
 
-  const fetchSessions = useCallback(async () => {
-    if (!selectedMechaId || !isRunning) return;
-    setLoading(true);
-    try {
-      const res = await fetch(`/api/mechas/${selectedMechaId}/sessions`);
-      if (res.ok) {
-        const data = await res.json();
-        setSessions(selectedMechaId, data);
-      }
-    } finally {
-      setLoading(false);
-    }
-  }, [selectedMechaId, isRunning, setSessions]);
-
-  useEffect(() => {
-    fetchSessions();
-  }, [fetchSessions]);
-
   const createSession = useCallback(async () => {
     if (!selectedMechaId) return;
     try {
@@ -72,6 +53,49 @@ export function SessionsPanel() {
       }
     } catch { /* ignore */ }
   }, [selectedMechaId, addSession, setSelectedSessionId]);
+
+  useEffect(() => {
+    if (!selectedMechaId || !isRunning) return;
+    const mechaId = selectedMechaId;
+    const controller = new AbortController();
+
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`/api/mechas/${mechaId}/sessions`, {
+          signal: controller.signal,
+        });
+        if (controller.signal.aborted) return;
+        if (!res.ok) return;
+        const data = (await res.json()) as Session[];
+        if (controller.signal.aborted) return;
+
+        setSessions(mechaId, data);
+
+        if (data.length > 0) {
+          setSelectedSessionId(data[0].sessionId);
+        } else {
+          // No sessions — auto-create one
+          const createRes = await fetch(`/api/mechas/${mechaId}/sessions`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({}),
+            signal: controller.signal,
+          });
+          if (controller.signal.aborted || !createRes.ok) return;
+          const session = await createRes.json();
+          addSession(mechaId, session);
+          setSelectedSessionId(session.sessionId);
+        }
+      } catch {
+        // aborted or network error — ignore
+      } finally {
+        if (!controller.signal.aborted) setLoading(false);
+      }
+    })();
+
+    return () => controller.abort();
+  }, [selectedMechaId, isRunning, setSessions, addSession, setSelectedSessionId]);
 
   if (!selectedMechaId) {
     return (
@@ -111,22 +135,6 @@ export function SessionsPanel() {
           <SessionSearch value={searchQuery} onChange={setSearchQuery} />
         </div>
       )}
-
-      {/* Stateless chat option */}
-      <div className="px-2 pt-2">
-        <button
-          onClick={() => setSelectedSessionId(null)}
-          className={cn(
-            "flex w-full items-center gap-2 rounded-md px-2 py-1.5 text-left text-sm transition-colors",
-            selectedSessionId === null
-              ? "bg-accent text-accent-foreground"
-              : "text-sidebar-foreground hover:bg-sidebar-accent",
-          )}
-        >
-          <span className="size-2 shrink-0 rounded-full bg-primary" />
-          <span className="flex-1">Stateless</span>
-        </button>
-      </div>
 
       {/* Sessions list */}
       <ScrollArea className="flex-1 px-2 py-1">

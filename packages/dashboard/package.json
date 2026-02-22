@@ -7,7 +7,9 @@
     "dev": "next dev -p 7600",
     "build": "next build",
     "start": "next start -p 7600",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
     "@assistant-ui/react": "^0.12.11",

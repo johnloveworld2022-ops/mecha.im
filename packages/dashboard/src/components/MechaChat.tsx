@@ -1,27 +1,25 @@
 "use client";
 
-import { useMemo } from "react";
+import { useEffect, useMemo, useState } from "react";
 import { AssistantRuntimeProvider } from "@assistant-ui/react";
 import { useLocalRuntime, type ChatModelAdapter, type ChatModelRunUpdate } from "@assistant-ui/react";
 import { Thread } from "@/components/assistant-ui/thread";
+import { fetchSessionHistory, type InitialMessage } from "@/lib/session-history";
 
 type JSONValue = string | number | boolean | null | JSONValue[] | { [key: string]: JSONValue };
 type AssistantContentPart = ChatModelRunUpdate["content"][number];
 
-function createMechaAdapter(mechaId: string, sessionId: string | null, onStreamComplete?: () => void): ChatModelAdapter {
+function createMechaAdapter(mechaId: string, sessionId: string, onStreamComplete?: () => void): ChatModelAdapter {
   return {
     async *run({ messages, abortSignal }) {
       try {
-        // Both session and stateless paths send only the latest user message
         const lastUserMsg = messages.filter((m) => m.role === "user").pop();
         const message = lastUserMsg?.content
           .filter((c) => c.type === "text")
           .map((c) => c.text)
           .join("") ?? "";
 
-        const url = sessionId
-          ? `/api/mechas/${mechaId}/sessions/${sessionId}/message`
-          : `/api/mechas/${mechaId}/chat`;
+        const url = `/api/mechas/${mechaId}/sessions/${sessionId}/message`;
 
         const res = await fetch(url, {
           method: "POST",
@@ -153,13 +151,49 @@ function extractContentParts(event: Record<string, unknown>): ExtractResult {
 
 interface MechaChatProps {
   mechaId: string;
-  sessionId?: string | null;
+  sessionId: string;
   onStreamComplete?: () => void;
 }
 
-export function MechaChat({ mechaId, sessionId = null, onStreamComplete }: MechaChatProps) {
+export function MechaChat({ mechaId, sessionId, onStreamComplete }: MechaChatProps) {
+  const [history, setHistory] = useState<InitialMessage[] | null>(null);
+
+  useEffect(() => {
+    let cancelled = false;
+    fetchSessionHistory(mechaId, sessionId)
+      .then((messages) => { if (!cancelled) setHistory(messages); })
+      .catch(() => { if (!cancelled) setHistory([]); });
+    return () => { cancelled = true; };
+  }, [mechaId, sessionId]);
+
+  if (history === null) {
+    return (
+      <div className="flex h-full items-center justify-center p-8">
+        <p className="text-sm text-muted-foreground">Loading session...</p>
+      </div>
+    );
+  }
+
+  return (
+    <MechaChatInner
+      mechaId={mechaId}
+      sessionId={sessionId}
+      initialMessages={history}
+      onStreamComplete={onStreamComplete}
+    />
+  );
+}
+
+function MechaChatInner({
+  mechaId,
+  sessionId,
+  initialMessages,
+  onStreamComplete,
+}: MechaChatProps & { initialMessages: InitialMessage[] }) {
   const adapter = useMemo(() => createMechaAdapter(mechaId, sessionId, onStreamComplete), [mechaId, sessionId, onStreamComplete]);
-  const runtime = useLocalRuntime(adapter);
+  const runtime = useLocalRuntime(adapter, {
+    initialMessages: initialMessages.length > 0 ? initialMessages : undefined,
+  });
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
