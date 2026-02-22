@@ -1,5 +1,6 @@
 "use client";
 
+import { BotIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
 import {
   Tooltip,
@@ -16,45 +17,27 @@ interface RailMechaIconProps {
   onClick: () => void;
 }
 
-function getInitials(name: string): string {
-  // Use first 2 chars of the mecha id/name
-  const clean = name.replace(/^mecha-/, "");
-  return clean.slice(0, 2).toUpperCase();
-}
-
-function stateDotColor(state: string): string {
-  if (state === "running") return "bg-success";
-  if (state === "exited" || state === "dead") return "bg-destructive";
-  return "bg-warning";
-}
-
 export function RailMechaIcon({ id, name, state, path, isActive, onClick }: RailMechaIconProps) {
-  const initials = getInitials(id);
-
   return (
     <Tooltip>
       <TooltipTrigger asChild>
         <button
           onClick={onClick}
           className={cn(
-            "relative flex size-11 items-center justify-center rounded-xl text-sm font-semibold transition-all",
+            "relative flex size-8 items-center justify-center transition-all",
             isActive
-              ? "bg-primary text-primary-foreground rounded-2xl"
-              : "bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground hover:rounded-xl",
+              ? "text-primary"
+              : "text-muted-foreground hover:text-foreground",
           )}
         >
-          {initials}
-          {/* Status dot */}
+          {/* Active left border */}
           <span
             className={cn(
-              "absolute -bottom-0.5 -right-0.5 size-3 rounded-full border-2 border-background",
-              stateDotColor(state),
+              "absolute left-0 top-1 bottom-1 w-0.5 rounded-full transition-colors",
+              isActive ? "bg-primary" : "bg-transparent",
             )}
           />
-          {/* Active indicator bar */}
-          {isActive && (
-            <span className="absolute -left-2 top-1/2 -translate-y-1/2 h-5 w-1 rounded-full bg-foreground" />
-          )}
+          <BotIcon className="size-3.5" />
         </button>
       </TooltipTrigger>
       <TooltipContent side="right" className="flex flex-col gap-0.5">

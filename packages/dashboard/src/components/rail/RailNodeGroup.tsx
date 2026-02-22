@@ -1,7 +1,12 @@
 "use client";
 
+import { ChevronDownIcon, MonitorIcon } from "lucide-react";
 import { cn } from "@/lib/utils";
-import { Separator } from "@/components/ui/separator";
+import {
+  Tooltip,
+  TooltipContent,
+  TooltipTrigger,
+} from "@/components/ui/tooltip";
 import { RailMechaIcon } from "./RailMechaIcon";
 import type { MechaWithNode } from "@/lib/store";
 
@@ -22,25 +27,34 @@ export function RailNodeGroup({
   collapsed,
   onToggleCollapse,
 }: RailNodeGroupProps) {
-  const allRunning = mechas.every((m) => m.state === "running");
-  const anyRunning = mechas.some((m) => m.state === "running");
-
   return (
     <div className="flex flex-col items-center gap-1">
-      <button
-        onClick={onToggleCollapse}
-        className="flex items-center gap-1 px-1 py-0.5 text-xs font-medium text-muted-foreground uppercase tracking-wider hover:text-foreground transition-colors"
-      >
-        <span
-          className={cn(
-            "size-1.5 rounded-full",
-            allRunning ? "bg-success" : anyRunning ? "bg-warning" : "bg-destructive",
-          )}
-        />
-        <span className="truncate max-w-[40px]">{node === "local" ? "L" : node.slice(0, 3)}</span>
-      </button>
+      {/* Node header — large collapsible button */}
+      <Tooltip>
+        <TooltipTrigger asChild>
+          <button
+            onClick={onToggleCollapse}
+            className="relative flex size-11 items-center justify-center rounded-xl bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
+          >
+            <MonitorIcon className="size-5" />
+            {/* Collapse indicator */}
+            <ChevronDownIcon
+              className={cn(
+                "absolute -bottom-0.5 left-1/2 -translate-x-1/2 size-2.5 text-muted-foreground transition-transform",
+                collapsed && "-rotate-90",
+              )}
+            />
+          </button>
+        </TooltipTrigger>
+        <TooltipContent side="right">
+          <span>{node}</span>
+          <span className="text-muted-foreground ml-1">({mechas.length})</span>
+        </TooltipContent>
+      </Tooltip>
+
+      {/* CASA icons — smaller, nested */}
       {!collapsed && (
-        <div className="flex flex-col items-center gap-2">
+        <div className="flex flex-col items-center gap-1">
           {mechas.map((m) => (
             <RailMechaIcon
               key={m.id}
@@ -54,7 +68,6 @@ export function RailNodeGroup({
           ))}
         </div>
       )}
-      <Separator className="my-1 w-8" />
     </div>
   );
 }

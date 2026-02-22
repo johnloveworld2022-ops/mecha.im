@@ -35,7 +35,7 @@ export function TopBar() {
   };
 
   return (
-    <div className="flex h-12 shrink-0 items-center gap-2 border-b border-border bg-background px-4">
+    <div className="flex h-12 shrink-0 items-center gap-2 bg-background px-4">
       {/* Mobile menu button */}
       <TooltipIconButton
         tooltip="Toggle sidebar"

@@ -1,6 +1,7 @@
 "use client";
 
 import { useMemo } from "react";
+import { LayoutDashboardIcon } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { RailNodeGroup } from "./RailNodeGroup";
 import { RailFooter } from "./RailFooter";
@@ -26,7 +27,7 @@ export function MechaRail() {
     <div className="flex h-full w-16 flex-col items-center border-r border-border bg-sidebar">
       {/* Logo / brand */}
       <div className="flex size-16 shrink-0 items-center justify-center">
-        <span className="text-lg font-bold text-primary">M</span>
+        <LayoutDashboardIcon className="size-5 text-primary" />
       </div>
 
       {/* Mecha icons grouped by node */}

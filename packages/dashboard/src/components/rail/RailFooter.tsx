@@ -1,25 +1,25 @@
 "use client";
 
-import { PlusIcon, SettingsIcon } from "lucide-react";
+import { PlusIcon } from "lucide-react";
+import Link from "next/link";
 import { ThemeToggle } from "@/components/ThemeToggle";
 import {
   Tooltip,
   TooltipContent,
   TooltipTrigger,
 } from "@/components/ui/tooltip";
-import Link from "next/link";
+import { Button } from "@/components/ui/button";
 
 export function RailFooter() {
   return (
-    <div className="flex flex-col items-center gap-2 pb-14">
+    <div className="flex flex-col items-center gap-1 py-1">
       <Tooltip>
         <TooltipTrigger asChild>
-          <Link
-            href="/create"
-            className="flex size-10 items-center justify-center rounded-xl bg-muted text-muted-foreground hover:bg-accent hover:text-accent-foreground transition-all"
-          >
-            <PlusIcon className="size-5" />
-          </Link>
+          <Button variant="ghost" size="icon-sm" asChild>
+            <Link href="/create">
+              <PlusIcon className="size-4" />
+            </Link>
+          </Button>
         </TooltipTrigger>
         <TooltipContent side="right">New Mecha</TooltipContent>
       </Tooltip>

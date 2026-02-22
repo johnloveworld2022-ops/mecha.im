@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import { PlusIcon } from "lucide-react";
 import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
 import { ScrollArea } from "@/components/ui/scroll-area";
-import { Separator } from "@/components/ui/separator";
+
 import { Skeleton } from "@/components/ui/skeleton";
 import { SessionItem } from "./SessionItem";
 import { SessionSearch } from "./SessionSearch";
@@ -104,8 +104,6 @@ export function SessionsPanel() {
           </TooltipIconButton>
         )}
       </div>
-
-      <Separator />
 
       {/* Search */}
       {mechaSessions.length > 3 && (
