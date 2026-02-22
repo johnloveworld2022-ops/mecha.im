@@ -876,15 +876,28 @@ describe("SessionManager", () => {
       expect(detail?.messages[1].content).toBe("world");
     });
 
-    it("handles assistant messages with non-array content", () => {
+    it("handles assistant messages with string content", () => {
       const dir = makeTmpDir();
       writeJsonl(dir, "sdk-noarr.jsonl", [
         { type: "user", message: { content: "test" }, timestamp: "2024-06-01T10:00:00Z" },
-        { type: "assistant", message: { content: "string-not-array" }, timestamp: "2024-06-01T10:00:05Z" },
+        { type: "assistant", message: { content: "string-response" }, timestamp: "2024-06-01T10:00:05Z" },
       ]);
 
       sm.importTranscripts(dir);
-      expect(sm.list()[0].messageCount).toBe(1); // only user message
+      const detail = sm.get(sm.list()[0].sessionId);
+      expect(detail?.messages).toHaveLength(2);
+      expect(detail?.messages[1].content).toBe("string-response");
+    });
+
+    it("skips messages with non-string non-array content", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-badcontent.jsonl", [
+        { type: "user", message: { content: 999 }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "user", message: { content: "real" }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      expect(sm.list()[0].messageCount).toBe(1);
     });
 
     it("falls back to current time when timestamp is missing", () => {
@@ -897,6 +910,20 @@ describe("SessionManager", () => {
       const sessions = sm.list();
       expect(sessions).toHaveLength(1);
       expect(sessions[0].createdAt).toBeDefined();
+    });
+
+    it("handles user messages with array content blocks (real SDK format)", () => {
+      const dir = makeTmpDir();
+      writeJsonl(dir, "sdk-realfmt.jsonl", [
+        { type: "user", message: { role: "user", content: [{ type: "text", text: "Hello from SDK" }] }, timestamp: "2024-06-01T10:00:00Z" },
+        { type: "assistant", message: { role: "assistant", content: [{ type: "thinking", text: "hmm" }, { type: "text", text: "Hi!" }] }, timestamp: "2024-06-01T10:00:05Z" },
+      ]);
+
+      sm.importTranscripts(dir);
+      const detail = sm.get(sm.list()[0].sessionId);
+      expect(detail?.messages).toHaveLength(2);
+      expect(detail?.messages[0].content).toBe("Hello from SDK");
+      expect(detail?.messages[1].content).toBe("Hi!"); // thinking blocks filtered out
     });
 
     it("skips user messages with non-string content", () => {
@@ -926,23 +953,17 @@ describe("SessionManager", () => {
 // --- resolveProjectDir ---
 
 describe("resolveProjectDir", () => {
-  it("converts /home/mecha to SDK project dir", () => {
-    expect(resolveProjectDir("/home/mecha")).toBe("/home/mecha/.claude/projects/home-mecha");
+  it("converts /home/mecha to SDK project dir with leading dash", () => {
+    expect(resolveProjectDir("/home/mecha")).toBe("/home/mecha/.claude/projects/-home-mecha");
   });
 
   it("handles root path", () => {
-    expect(resolveProjectDir("/")).toBe("/.claude/projects");
-  });
-
-  it("strips leading dash from slug", () => {
-    // "/home/mecha" → slug should be "home-mecha" not "-home-mecha"
-    const result = resolveProjectDir("/home/mecha");
-    expect(result).not.toContain("/-home-mecha");
+    expect(resolveProjectDir("/")).toBe("/.claude/projects/-");
   });
 
   it("handles nested paths", () => {
     expect(resolveProjectDir("/home/user/projects/myapp")).toBe(
-      "/home/user/projects/myapp/.claude/projects/home-user-projects-myapp",
+      "/home/user/projects/myapp/.claude/projects/-home-user-projects-myapp",
     );
   });
 });

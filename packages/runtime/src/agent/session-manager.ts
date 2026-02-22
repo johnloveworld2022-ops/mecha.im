@@ -16,7 +16,7 @@ import {
  * e.g. "/home/mecha" → "/home/mecha/.claude/projects/-home-mecha"
  */
 export function resolveProjectDir(cwd: string): string {
-  const slug = cwd.replace(/\//g, "-").replace(/^-/, "");
+  const slug = cwd.replace(/\//g, "-");
   return join(cwd, ".claude", "projects", slug);
 }
 
@@ -322,18 +322,18 @@ export class SessionManager {
         const timestamp = (parsed.timestamp as string) ?? new Date().toISOString();
         const msg = parsed.message as Record<string, unknown> | undefined;
 
-        if (parsed.type === "user" && msg) {
-          const content = typeof msg.content === "string" ? msg.content : "";
-          if (content) messages.push({ role: "user", content, timestamp });
-        } else if (parsed.type === "assistant" && msg) {
-          const contentArr = msg.content as Array<Record<string, unknown>> | undefined;
-          if (Array.isArray(contentArr)) {
-            const text = contentArr
+        if ((parsed.type === "user" || parsed.type === "assistant") && msg) {
+          const role = parsed.type as "user" | "assistant";
+          let content = "";
+          if (typeof msg.content === "string") {
+            content = msg.content;
+          } else if (Array.isArray(msg.content)) {
+            content = (msg.content as Array<Record<string, unknown>>)
               .filter((b) => b.type === "text" && typeof b.text === "string" && (b.text as string).length > 0)
               .map((b) => b.text as string)
               .join("");
-            if (text) messages.push({ role: "assistant", content: text, timestamp });
           }
+          if (content) messages.push({ role, content, timestamp });
         }
       }
 
