@@ -12,6 +12,7 @@ export default defineConfig({
         "packages/cli/src/**",
         "packages/runtime/src/**",
         "packages/channels/src/**",
+        "packages/agent/src/**",
       ],
       exclude: [
         "**/__tests__/**",
@@ -25,6 +26,7 @@ export default defineConfig({
         "packages/service/src/service.ts",
         "packages/channels/src/bin.ts",
         "packages/channels/src/adapters/types.ts",
+        "packages/cli/src/commands/dashboard.ts",
       ],
       thresholds: {
         lines: 100,

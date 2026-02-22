@@ -28,6 +28,8 @@ import { registerSessionsCommand } from "./commands/sessions.js";
 import { registerCompletionsCommand } from "./commands/completions.js";
 import { registerEjectCommand } from "./commands/eject.js";
 import { registerChannelCommand } from "./commands/channel.js";
+import { registerAgentCommand } from "./commands/agent.js";
+import { registerNodeCommand } from "./commands/node.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -84,6 +86,8 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   registerCompletionsCommand(program, deps);
   registerEjectCommand(program, deps);
   registerChannelCommand(program, deps);
+  registerAgentCommand(program, deps);
+  registerNodeCommand(program, deps);
 
   return program;
 }

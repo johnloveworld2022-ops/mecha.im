@@ -10,8 +10,6 @@
     { "path": "../core" },
     { "path": "../contracts" },
     { "path": "../docker" },
-    { "path": "../service" },
-    { "path": "../channels" },
-    { "path": "../agent" }
+    { "path": "../service" }
   ]
 }

@@ -12,6 +12,7 @@
   "dependencies": {
     "@assistant-ui/react": "^0.12.11",
     "@assistant-ui/react-markdown": "^0.12.4",
+    "@mecha/agent": "workspace:*",
     "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
     "@mecha/docker": "workspace:*",

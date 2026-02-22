@@ -13,7 +13,8 @@
     { "path": "packages/docker" },
     { "path": "packages/cli" },
     { "path": "packages/runtime" },
-    { "path": "packages/channels" }
+    { "path": "packages/channels" },
+    { "path": "packages/agent" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist", "coverage"]

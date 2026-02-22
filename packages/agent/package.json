@@ -1,12 +1,16 @@
 {
-  "name": "@mecha/cli",
+  "name": "@mecha/agent",
   "version": "0.1.0",
   "private": true,
   "type": "module",
-  "bin": {
-    "mecha": "./dist/bin.js"
+  "main": "./dist/index.js",
+  "types": "./dist/index.d.ts",
+  "exports": {
+    ".": {
+      "import": "./dist/index.js",
+      "types": "./dist/index.d.ts"
+    }
   },
-  "main": "./dist/bin.js",
   "scripts": {
     "build": "tsc",
     "typecheck": "tsc --noEmit",
@@ -14,13 +18,11 @@
     "test:coverage": "vitest run --coverage"
   },
   "dependencies": {
-    "@mecha/agent": "workspace:*",
-    "@mecha/channels": "workspace:*",
     "@mecha/contracts": "workspace:*",
     "@mecha/core": "workspace:*",
     "@mecha/docker": "workspace:*",
     "@mecha/service": "workspace:*",
-    "commander": "^13.1.0"
+    "fastify": "^5.3.3"
   },
   "devDependencies": {
     "@types/node": "^25.3.0",

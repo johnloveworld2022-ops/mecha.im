@@ -5,13 +5,15 @@ import { DEFAULTS } from "@mecha/core";
 import { getDockerClient } from "@/lib/docker";
 import { withAuth } from "@/lib/api-auth";
 import { getOtpSecret } from "@/lib/auth";
+import { aggregateMechas } from "@/lib/nodes";
 
 export const GET = withAuth(async () => {
   const client = getDockerClient();
   const items = await mechaLs(client);
+  const all = await aggregateMechas(items);
 
   // Map service response to dashboard-compatible shape (ports array for frontend)
-  const mapped = items.map((item) => ({
+  const mapped = all.map((item) => ({
     id: item.id,
     name: item.name,
     state: item.state,
@@ -21,6 +23,7 @@ export const GET = withAuth(async () => {
       ? [{ PrivatePort: DEFAULTS.CONTAINER_PORT, PublicPort: item.port, Type: "tcp" }]
       : [],
     created: item.created,
+    node: item.node,
   }));
   return NextResponse.json(mapped);
 });
