@@ -27,6 +27,7 @@ import { registerChatCommand } from "./commands/chat.js";
 import { registerSessionsCommand } from "./commands/sessions.js";
 import { registerCompletionsCommand } from "./commands/completions.js";
 import { registerEjectCommand } from "./commands/eject.js";
+import { registerChannelCommand } from "./commands/channel.js";
 
 const require = createRequire(import.meta.url);
 const { version } = require("../package.json") as { version: string };
@@ -82,6 +83,7 @@ export function createProgram(depsOverride?: CommandDeps): Command {
   registerSessionsCommand(program, deps);
   registerCompletionsCommand(program, deps);
   registerEjectCommand(program, deps);
+  registerChannelCommand(program, deps);
 
   return program;
 }

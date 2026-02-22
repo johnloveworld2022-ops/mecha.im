@@ -12,7 +12,8 @@
     { "path": "packages/service" },
     { "path": "packages/docker" },
     { "path": "packages/cli" },
-    { "path": "packages/runtime" }
+    { "path": "packages/runtime" },
+    { "path": "packages/channels" }
   ],
   "include": [],
   "exclude": ["node_modules", "dist", "coverage"]

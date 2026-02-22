@@ -29,6 +29,10 @@ export {
   SessionListInput,
   MechaEjectInput,
   MechaEjectResult,
+  ChannelType,
+  ChannelAddInput,
+  ChannelLinkInput,
+  ChannelUnlinkInput,
 } from "./schemas.js";
 
 export type {
@@ -59,6 +63,10 @@ export type {
   SessionListInput as SessionListInputType,
   MechaEjectInput as MechaEjectInputType,
   MechaEjectResult as MechaEjectResultType,
+  ChannelType as ChannelTypeType,
+  ChannelAddInput as ChannelAddInputType,
+  ChannelLinkInput as ChannelLinkInputType,
+  ChannelUnlinkInput as ChannelUnlinkInputType,
 } from "./schemas.js";
 
 export {
@@ -75,6 +83,9 @@ export {
   SessionBusyError,
   SessionCapReachedError,
   EjectFileExistsError,
+  ChannelNotFoundError,
+  ChannelLinkNotFoundError,
+  ChannelLinkExistsError,
   toHttpStatus,
   toExitCode,
   toUserMessage,

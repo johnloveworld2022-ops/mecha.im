@@ -11,6 +11,7 @@ export default defineConfig({
         "packages/docker/src/**",
         "packages/cli/src/**",
         "packages/runtime/src/**",
+        "packages/channels/src/**",
       ],
       exclude: [
         "**/__tests__/**",
@@ -22,6 +23,8 @@ export default defineConfig({
         "packages/cli/src/program.ts",
         "packages/runtime/src/main.ts",
         "packages/service/src/service.ts",
+        "packages/channels/src/bin.ts",
+        "packages/channels/src/adapters/types.ts",
       ],
       thresholds: {
         lines: 100,

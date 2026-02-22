@@ -211,3 +211,27 @@ export const MechaEjectResult = z.object({
   envPath:     z.string(),
 });
 export type MechaEjectResult = z.infer<typeof MechaEjectResult>;
+
+// --- Channel schemas ---
+
+export const ChannelType = z.enum(["telegram"]);
+export type ChannelType = z.infer<typeof ChannelType>;
+
+export const ChannelAddInput = z.object({
+  type:     ChannelType,
+  botToken: z.string().min(1),
+});
+export type ChannelAddInput = z.infer<typeof ChannelAddInput>;
+
+export const ChannelLinkInput = z.object({
+  channelId: z.string().min(1),
+  chatId:    z.string().min(1),
+  mechaId:   z.string().min(1),
+});
+export type ChannelLinkInput = z.infer<typeof ChannelLinkInput>;
+
+export const ChannelUnlinkInput = z.object({
+  channelId: z.string().min(1),
+  chatId:    z.string().min(1),
+});
+export type ChannelUnlinkInput = z.infer<typeof ChannelUnlinkInput>;

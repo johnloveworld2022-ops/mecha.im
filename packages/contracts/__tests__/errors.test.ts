@@ -22,6 +22,9 @@ import {
   SessionBusyError,
   SessionCapReachedError,
   EjectFileExistsError,
+  ChannelNotFoundError,
+  ChannelLinkNotFoundError,
+  ChannelLinkExistsError,
   toHttpStatus,
   toExitCode,
   toUserMessage,
@@ -124,6 +127,27 @@ describe("error classes", () => {
     expect(err.code).toBe("EJECT_FILE_EXISTS");
     expect(err).toBeInstanceOf(MechaError);
   });
+
+  it("ChannelNotFoundError has correct message and code", () => {
+    const err = new ChannelNotFoundError("ch-abc");
+    expect(err.message).toBe("Channel not found: ch-abc");
+    expect(err.code).toBe("CHANNEL_NOT_FOUND");
+    expect(err).toBeInstanceOf(MechaError);
+  });
+
+  it("ChannelLinkNotFoundError has correct message and code", () => {
+    const err = new ChannelLinkNotFoundError("ch-abc", "12345");
+    expect(err.message).toBe("No link found for channel ch-abc chat 12345");
+    expect(err.code).toBe("CHANNEL_LINK_NOT_FOUND");
+    expect(err).toBeInstanceOf(MechaError);
+  });
+
+  it("ChannelLinkExistsError has correct message and code", () => {
+    const err = new ChannelLinkExistsError("ch-abc", "12345");
+    expect(err.message).toBe("Link already exists for channel ch-abc chat 12345");
+    expect(err.code).toBe("CHANNEL_LINK_EXISTS");
+    expect(err).toBeInstanceOf(MechaError);
+  });
 });
 
 describe("toHttpStatus", () => {
@@ -146,6 +170,9 @@ describe("toHttpStatus", () => {
     expect(toHttpStatus(new SessionBusyError("s"))).toBe(409);
     expect(toHttpStatus(new SessionCapReachedError())).toBe(429);
     expect(toHttpStatus(new EjectFileExistsError("/x"))).toBe(409);
+    expect(toHttpStatus(new ChannelNotFoundError("ch"))).toBe(404);
+    expect(toHttpStatus(new ChannelLinkNotFoundError("ch", "c"))).toBe(404);
+    expect(toHttpStatus(new ChannelLinkExistsError("ch", "c"))).toBe(409);
   });
 
   it("maps ZodError to 400", () => {

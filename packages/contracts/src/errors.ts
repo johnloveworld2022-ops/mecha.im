@@ -60,6 +60,20 @@ export class EjectFileExistsError extends MechaError {
   constructor(path: string) { super(`File already exists: ${path}. Use --force to overwrite.`, "EJECT_FILE_EXISTS"); }
 }
 
+// --- Channel errors ---
+
+export class ChannelNotFoundError extends MechaError {
+  constructor(id: string) { super(`Channel not found: ${id}`, "CHANNEL_NOT_FOUND"); }
+}
+
+export class ChannelLinkNotFoundError extends MechaError {
+  constructor(channelId: string, chatId: string) { super(`No link found for channel ${channelId} chat ${chatId}`, "CHANNEL_LINK_NOT_FOUND"); }
+}
+
+export class ChannelLinkExistsError extends MechaError {
+  constructor(channelId: string, chatId: string) { super(`Link already exists for channel ${channelId} chat ${chatId}`, "CHANNEL_LINK_EXISTS"); }
+}
+
 // --- Error mapping helpers ---
 
 const HTTP_STATUS_MAP: Record<string, number> = {
@@ -81,6 +95,9 @@ const HTTP_STATUS_MAP: Record<string, number> = {
   SESSION_BUSY: 409,
   SESSION_CAP_REACHED: 429,
   EJECT_FILE_EXISTS: 409,
+  CHANNEL_NOT_FOUND: 404,
+  CHANNEL_LINK_NOT_FOUND: 404,
+  CHANNEL_LINK_EXISTS: 409,
 };
 
 export function toHttpStatus(err: unknown): number {
