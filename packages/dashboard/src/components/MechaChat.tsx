@@ -163,7 +163,7 @@ export function MechaChat({ mechaId, sessionId = null, onStreamComplete }: Mecha
 
   return (
     <AssistantRuntimeProvider runtime={runtime}>
-      <div className="h-[500px] rounded-lg overflow-hidden border border-border">
+      <div className="h-full overflow-hidden">
         <Thread />
       </div>
     </AssistantRuntimeProvider>

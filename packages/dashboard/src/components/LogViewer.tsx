@@ -35,7 +35,7 @@ export function LogViewer({ mechaId }: { mechaId: string }) {
       </div>
       <div
         ref={containerRef}
-        className="h-[400px] overflow-y-auto bg-black rounded-lg p-3 font-mono text-xs leading-relaxed text-[#ccc] border border-border"
+        className="flex-1 min-h-[200px] max-h-[500px] overflow-y-auto bg-black rounded-lg p-3 font-mono text-xs leading-relaxed text-[#ccc] border border-border"
       >
         {lines.length === 0 ? (
           <span className="text-muted-foreground">Waiting for logs...</span>
