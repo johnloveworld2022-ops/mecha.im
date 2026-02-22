@@ -27,6 +27,8 @@ export {
   SessionInterruptInput,
   SessionConfigUpdateInput,
   SessionListInput,
+  MechaEjectInput,
+  MechaEjectResult,
 } from "./schemas.js";
 
 export type {
@@ -55,6 +57,8 @@ export type {
   SessionInterruptInput as SessionInterruptInputType,
   SessionConfigUpdateInput as SessionConfigUpdateInputType,
   SessionListInput as SessionListInputType,
+  MechaEjectInput as MechaEjectInputType,
+  MechaEjectResult as MechaEjectResultType,
 } from "./schemas.js";
 
 export {
@@ -70,6 +74,7 @@ export {
   SessionNotFoundError,
   SessionBusyError,
   SessionCapReachedError,
+  EjectFileExistsError,
   toHttpStatus,
   toExitCode,
   toUserMessage,

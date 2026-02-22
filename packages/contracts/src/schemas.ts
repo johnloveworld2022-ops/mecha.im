@@ -196,3 +196,18 @@ export const SessionListInput = z.object({
   id: z.string().min(1),
 });
 export type SessionListInput = z.infer<typeof SessionListInput>;
+
+// --- Eject schemas ---
+
+export const MechaEjectInput = z.object({
+  id:    z.string().min(1),
+  force: z.boolean().default(false),
+});
+export type MechaEjectInput = z.infer<typeof MechaEjectInput>;
+
+export const MechaEjectResult = z.object({
+  id:          z.string(),
+  composePath: z.string(),
+  envPath:     z.string(),
+});
+export type MechaEjectResult = z.infer<typeof MechaEjectResult>;

@@ -56,6 +56,10 @@ export class SessionCapReachedError extends MechaError {
   constructor() { super("Maximum number of sessions reached", "SESSION_CAP_REACHED"); }
 }
 
+export class EjectFileExistsError extends MechaError {
+  constructor(path: string) { super(`File already exists: ${path}. Use --force to overwrite.`, "EJECT_FILE_EXISTS"); }
+}
+
 // --- Error mapping helpers ---
 
 const HTTP_STATUS_MAP: Record<string, number> = {
@@ -76,6 +80,7 @@ const HTTP_STATUS_MAP: Record<string, number> = {
   SESSION_NOT_FOUND: 404,
   SESSION_BUSY: 409,
   SESSION_CAP_REACHED: 429,
+  EJECT_FILE_EXISTS: 409,
 };
 
 export function toHttpStatus(err: unknown): number {

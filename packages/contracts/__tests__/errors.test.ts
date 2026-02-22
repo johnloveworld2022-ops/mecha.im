@@ -21,6 +21,7 @@ import {
   SessionNotFoundError,
   SessionBusyError,
   SessionCapReachedError,
+  EjectFileExistsError,
   toHttpStatus,
   toExitCode,
   toUserMessage,
@@ -116,6 +117,13 @@ describe("error classes", () => {
     expect(err.code).toBe("SESSION_CAP_REACHED");
     expect(err).toBeInstanceOf(MechaError);
   });
+
+  it("EjectFileExistsError has correct message and code", () => {
+    const err = new EjectFileExistsError("/tmp/docker-compose.yml");
+    expect(err.message).toBe("File already exists: /tmp/docker-compose.yml. Use --force to overwrite.");
+    expect(err.code).toBe("EJECT_FILE_EXISTS");
+    expect(err).toBeInstanceOf(MechaError);
+  });
 });
 
 describe("toHttpStatus", () => {
@@ -137,6 +145,7 @@ describe("toHttpStatus", () => {
     expect(toHttpStatus(new SessionNotFoundError("s"))).toBe(404);
     expect(toHttpStatus(new SessionBusyError("s"))).toBe(409);
     expect(toHttpStatus(new SessionCapReachedError())).toBe(429);
+    expect(toHttpStatus(new EjectFileExistsError("/x"))).toBe(409);
   });
 
   it("maps ZodError to 400", () => {
