@@ -140,6 +140,41 @@ Icon sizes: icon-xs (24px), icon-sm (32px), icon (36px), icon-lg (40px)
 | Font: monospace | `font-mono` |
 | Shadow: sm/md/lg | `shadow-sm` / `shadow-md` / `shadow-lg` |
 
+## Dropdown Menus
+
+All dropdown menus (context menus, action menus, selects) MUST follow this pattern.
+
+### Container
+```tsx
+className="bg-popover text-popover-foreground border border-border rounded-md p-1 shadow-md z-50 min-w-[8rem] overflow-x-hidden overflow-y-auto"
+```
+
+### Menu Item
+```tsx
+className="flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm cursor-default focus:bg-accent focus:text-accent-foreground"
+```
+
+### Destructive Item
+```tsx
+className="... text-destructive focus:bg-destructive/10"
+```
+
+### Icons inside Items
+```tsx
+<SomeIcon className="size-4 text-muted-foreground" />
+```
+
+### Quick Reference
+
+| Element | Classes |
+|---|---|
+| Menu container | `bg-popover text-popover-foreground border border-border rounded-md p-1 shadow-md` |
+| Menu item | `flex items-center gap-2 rounded-sm px-2 py-1.5 text-sm cursor-default` |
+| Item hover/focus | `focus:bg-accent focus:text-accent-foreground` |
+| Destructive item | `text-destructive focus:bg-destructive/10` |
+| Item icon | `size-4 text-muted-foreground` |
+| Disabled item | `opacity-50 pointer-events-none` |
+
 ## File Organization
 
 ```

@@ -286,7 +286,7 @@ export function SessionsPanel() {
         <div className="px-2 pb-1">
           <button
             onClick={createSession}
-            className="flex w-full items-center gap-2 rounded-md bg-muted px-2 py-1.5 text-sm text-sidebar-foreground transition-colors hover:bg-accent"
+            className="flex h-8 w-full items-center gap-2 rounded-md bg-muted px-2 text-sm text-sidebar-foreground transition-colors hover:bg-accent"
           >
             <PlusIcon className="size-4" />
             New Chat
