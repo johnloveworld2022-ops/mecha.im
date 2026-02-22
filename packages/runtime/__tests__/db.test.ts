@@ -187,11 +187,18 @@ describe("SQLite database", () => {
     expect(cols).toContain("deleted_at");
   });
 
-  it("runMigrations is idempotent (can be called twice)", () => {
+  it("runMigrations is idempotent (can be called twice) and all columns exist", () => {
     db = createDatabase(":memory:");
     runMigrations(db);
     // Should not throw when called a second time
     expect(() => runMigrations(db)).not.toThrow();
+
+    // Verify all usage columns exist after double migration
+    const info = db.prepare("PRAGMA table_info(sessions)").all() as Array<{ name: string }>;
+    const cols = info.map((c) => c.name);
+    for (const col of ["total_cost_usd", "total_input_tokens", "total_output_tokens", "total_duration_ms", "turn_count"]) {
+      expect(cols).toContain(col);
+    }
   });
 
   it("foreign keys are enabled", () => {

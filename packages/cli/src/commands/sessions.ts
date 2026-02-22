@@ -7,15 +7,7 @@ import {
   mechaSessionInterrupt,
   mechaSessionRename,
 } from "@mecha/service";
-import { toUserMessage, toExitCode } from "@mecha/contracts";
-
-interface UsageStats {
-  totalCostUsd: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalDurationMs: number;
-  turnCount: number;
-}
+import { toUserMessage, toExitCode, type SessionUsageType as UsageStats } from "@mecha/contracts";
 
 interface SessionSummary {
   sessionId: string;
@@ -24,7 +16,7 @@ interface SessionSummary {
   messageCount: number;
   lastMessageAt: string | null;
   createdAt: string;
-  usage: UsageStats;
+  usage?: UsageStats;
 }
 
 interface SessionMessage {
@@ -86,13 +78,11 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
         formatter.info(`State: ${detail.state}`);
         formatter.info(`Messages: ${detail.messageCount}`);
         formatter.info(`Created: ${detail.createdAt}`);
-        if (detail.usage) {
-          formatter.info(`Turns: ${detail.usage.turnCount}`);
-          formatter.info(`Cost: ${formatCost(detail.usage.totalCostUsd)}`);
-          formatter.info(`Input tokens: ${detail.usage.totalInputTokens}`);
-          formatter.info(`Output tokens: ${detail.usage.totalOutputTokens}`);
-          formatter.info(`Duration: ${detail.usage.totalDurationMs}ms`);
-        }
+        formatter.info(`Turns: ${detail.usage?.turnCount ?? 0}`);
+        formatter.info(`Cost: ${formatCost(detail.usage?.totalCostUsd ?? 0)}`);
+        formatter.info(`Input tokens: ${detail.usage?.totalInputTokens ?? 0}`);
+        formatter.info(`Output tokens: ${detail.usage?.totalOutputTokens ?? 0}`);
+        formatter.info(`Duration: ${detail.usage?.totalDurationMs ?? 0}ms`);
         if (detail.messages.length > 0) {
           formatter.info("---");
           for (const msg of detail.messages) {

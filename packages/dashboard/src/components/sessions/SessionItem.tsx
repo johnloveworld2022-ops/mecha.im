@@ -119,7 +119,11 @@ export function SessionItem({ session, isActive, onClick, onRename, onDelete }: 
           <span className="flex items-center gap-1 text-xs text-muted-foreground shrink-0">
             <span>{session.messageCount}</span>
             {session.usage && session.usage.totalCostUsd > 0 && (
-              <span className="font-mono">${session.usage.totalCostUsd < 0.01 ? session.usage.totalCostUsd.toFixed(4) : session.usage.totalCostUsd.toFixed(2)}</span>
+              <span className="font-mono">
+                ${session.usage.totalCostUsd < 0.01
+                  ? session.usage.totalCostUsd.toFixed(4)
+                  : session.usage.totalCostUsd.toFixed(2)}
+              </span>
             )}
             {session.lastMessageAt && (
               <span>{timeAgo(session.lastMessageAt)}</span>

@@ -1,7 +1,7 @@
 import type Database from "better-sqlite3";
 import { randomUUID } from "node:crypto";
 import { readdirSync, readFileSync, unlinkSync } from "node:fs";
-import { join } from "node:path";
+import { join, resolve } from "node:path";
 import type { AgentOptions } from "./casa.js";
 import { PERMISSION_MAP } from "./casa.js";
 import type { SessionConfigType } from "@mecha/contracts";
@@ -64,6 +64,20 @@ const ZERO_USAGE: UsageStats = {
   totalDurationMs: 0,
   turnCount: 0,
 };
+
+/** Safely unlink a JSONL file — validates path stays under projectDir and ignores ENOENT */
+function safeUnlinkJsonl(projectDir: string, sdkSessionId: string): void {
+  const target = resolve(projectDir, `${sdkSessionId}.jsonl`);
+  if (!target.startsWith(resolve(projectDir) + "/")) return; // path traversal guard
+  try {
+    unlinkSync(target);
+  } catch (err: unknown) {
+    if ((err as NodeJS.ErrnoException).code !== "ENOENT") {
+      // Log unexpected errors but don't throw — best-effort cleanup
+      console.error(`Failed to unlink ${target}: ${(err as Error).message}`);
+    }
+  }
+}
 
 function rowToUsage(row: Record<string, unknown>): UsageStats {
   return {
@@ -251,11 +265,7 @@ export class SessionManager {
 
     // Best-effort JSONL cleanup
     if (sdkSessionId && this.projectDir) {
-      try {
-        unlinkSync(join(this.projectDir, `${sdkSessionId}.jsonl`));
-      } catch {
-        // Non-fatal: file may not exist
-      }
+      safeUnlinkJsonl(this.projectDir, sdkSessionId);
     }
 
     return result.changes > 0;
@@ -288,7 +298,7 @@ export class SessionManager {
 
     let assistantText = "";
     let caughtError: unknown = undefined;
-    let pendingUsage: { costUsd: number; inputTokens: number; outputTokens: number; durationMs: number } | null = null;
+    const pendingUsage = { costUsd: 0, inputTokens: 0, outputTokens: 0, durationMs: 0, turns: 0 };
     try {
       const { query } = await import("@anthropic-ai/claude-agent-sdk");
 
@@ -328,15 +338,14 @@ export class SessionManager {
           }
         }
 
-        // Capture usage from result event
+        // Accumulate usage from result events (may fire multiple times per stream)
         if (sdkMsg.type === "result") {
           const usage = sdkMsg.usage as Record<string, unknown> | undefined;
-          pendingUsage = {
-            costUsd: (sdkMsg.total_cost_usd as number) ?? 0,
-            inputTokens: (usage?.input_tokens as number) ?? 0,
-            outputTokens: (usage?.output_tokens as number) ?? 0,
-            durationMs: (sdkMsg.duration_ms as number) ?? 0,
-          };
+          pendingUsage.costUsd += (sdkMsg.total_cost_usd as number) ?? 0;
+          pendingUsage.inputTokens += (usage?.input_tokens as number) ?? 0;
+          pendingUsage.outputTokens += (usage?.output_tokens as number) ?? 0;
+          pendingUsage.durationMs += (sdkMsg.duration_ms as number) ?? 0;
+          pendingUsage.turns++;
         }
 
         yield msg;
@@ -352,10 +361,10 @@ export class SessionManager {
           ).run(sessionId, assistantText);
         }
 
-        if (pendingUsage) {
+        if (pendingUsage.turns > 0) {
           this.db.prepare(
             `UPDATE sessions SET
-              turn_count = turn_count + 1,
+              turn_count = turn_count + ?,
               total_cost_usd = total_cost_usd + ?,
               total_input_tokens = total_input_tokens + ?,
               total_output_tokens = total_output_tokens + ?,
@@ -363,6 +372,7 @@ export class SessionManager {
               state = 'idle', updated_at = datetime('now'), last_message_at = datetime('now')
             WHERE id = ?`,
           ).run(
+            pendingUsage.turns,
             pendingUsage.costUsd,
             pendingUsage.inputTokens,
             pendingUsage.outputTokens,
@@ -440,11 +450,7 @@ export class SessionManager {
       // Best-effort JSONL cleanup after transaction
       for (const row of expiredRows) {
         if (row.sdk_session_id && this.projectDir) {
-          try {
-            unlinkSync(join(this.projectDir, `${row.sdk_session_id}.jsonl`));
-          } catch {
-            // Non-fatal
-          }
+          safeUnlinkJsonl(this.projectDir, row.sdk_session_id);
         }
       }
     }
