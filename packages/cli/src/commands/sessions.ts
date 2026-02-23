@@ -8,33 +8,25 @@ import {
   mechaSessionRename,
   mechaSessionConfigUpdate,
 } from "@mecha/service";
-import { toUserMessage, toExitCode, type SessionUsageType as UsageStats } from "@mecha/contracts";
+import type { SessionListResult } from "@mecha/service";
+import type { SessionSummary, ParsedSession, ParsedMessage } from "@mecha/core";
+import { toUserMessage, toExitCode } from "@mecha/contracts";
 
-interface SessionSummary {
-  sessionId: string;
-  title: string;
-  state: string;
-  messageCount: number;
-  lastMessageAt: string | null;
-  createdAt: string;
-  usage?: UsageStats;
+function formatDate(d: Date): string {
+  return d.toLocaleString();
 }
 
-interface SessionMessage {
-  role: string;
-  content: string;
-  createdAt: string;
-}
-
-interface SessionDetail extends SessionSummary {
-  config: Record<string, unknown>;
-  messages: SessionMessage[];
-}
-
-function formatCost(usd: number): string {
-  if (usd === 0) return "-";
-  if (usd < 0.01) return `$${usd.toFixed(4)}`;
-  return `$${usd.toFixed(2)}`;
+function summarizeContent(msg: ParsedMessage): string {
+  const parts: string[] = [];
+  for (const block of msg.content) {
+    switch (block.type) {
+      case "text": parts.push(block.text); break;
+      case "thinking": parts.push(`[thinking: ${block.thinking.slice(0, 80)}...]`); break;
+      case "tool_use": parts.push(`[tool: ${block.name}]`); break;
+      case "tool_result": parts.push("[tool_result]"); break;
+    }
+  }
+  return parts.join("\n");
 }
 
 export function registerSessionsCommand(parent: Command, deps: CommandDeps): void {
@@ -44,22 +36,26 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
 
   sessions
     .command("list <id>")
-    .description("List all sessions for a Mecha")
+    .description("List all sessions for a Mecha (works when stopped)")
     .action(async (id: string) => {
       const { dockerClient, formatter } = deps;
       try {
-        const result = await mechaSessionList(dockerClient, { id }) as SessionSummary[];
+        const result: SessionListResult = await mechaSessionList(dockerClient, { id });
+        const { sessions: sessionList, meta } = result;
         formatter.table(
-          result.map((s) => ({
-            ID: s.sessionId.slice(0, 8),
-            TITLE: s.title || "(untitled)",
-            STATE: s.state,
-            MESSAGES: String(s.messageCount),
-            TURNS: String(s.usage?.turnCount ?? 0),
-            COST: formatCost(s.usage?.totalCostUsd ?? 0),
-            "LAST ACTIVITY": s.lastMessageAt ?? "-",
-          })),
-          ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
+          sessionList.map((s: SessionSummary) => {
+            const m = meta[s.id];
+            return {
+              ID: s.id.slice(0, 8),
+              TITLE: m?.customTitle ?? s.title,
+              SLUG: s.projectSlug,
+              MESSAGES: String(s.messageCount),
+              MODEL: s.model ?? "-",
+              STARRED: m?.starred ? "*" : "",
+              UPDATED: formatDate(s.updatedAt),
+            };
+          }),
+          ["ID", "TITLE", "SLUG", "MESSAGES", "MODEL", "STARRED", "UPDATED"],
         );
       } catch (err) {
         formatter.error(toUserMessage(err));
@@ -70,24 +66,26 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
   sessions
     .command("show <id> <sessionId>")
     .description("Show session details and messages")
-    .action(async (id: string, sessionId: string) => {
+    .option("--raw", "Show full JSON content blocks")
+    .action(async (id: string, sessionId: string, opts: { raw?: boolean }) => {
       const { dockerClient, formatter } = deps;
       try {
-        const detail = await mechaSessionGet(dockerClient, { id, sessionId }) as SessionDetail;
-        formatter.info(`Session: ${detail.sessionId}`);
-        formatter.info(`Title: ${detail.title || "(untitled)"}`);
-        formatter.info(`State: ${detail.state}`);
-        formatter.info(`Messages: ${detail.messageCount}`);
-        formatter.info(`Created: ${detail.createdAt}`);
-        formatter.info(`Turns: ${detail.usage?.turnCount ?? 0}`);
-        formatter.info(`Cost: ${formatCost(detail.usage?.totalCostUsd ?? 0)}`);
-        formatter.info(`Input tokens: ${detail.usage?.totalInputTokens ?? 0}`);
-        formatter.info(`Output tokens: ${detail.usage?.totalOutputTokens ?? 0}`);
-        formatter.info(`Duration: ${detail.usage?.totalDurationMs ?? 0}ms`);
-        if (detail.messages.length > 0) {
+        const session: ParsedSession = await mechaSessionGet(dockerClient, { id, sessionId });
+        formatter.info(`Session: ${session.id}`);
+        formatter.info(`Project: ${session.projectSlug}`);
+        formatter.info(`Title: ${session.title}`);
+        formatter.info(`Messages: ${session.messageCount}`);
+        formatter.info(`Model: ${session.model ?? "(unknown)"}`);
+        formatter.info(`Created: ${formatDate(session.createdAt)}`);
+        formatter.info(`Updated: ${formatDate(session.updatedAt)}`);
+        if (session.messages.length > 0) {
           formatter.info("---");
-          for (const msg of detail.messages) {
-            formatter.info(`[${msg.role}] ${msg.content}`);
+          for (const msg of session.messages) {
+            if (opts.raw) {
+              formatter.info(`[${msg.role}] ${JSON.stringify(msg.content)}`);
+            } else {
+              formatter.info(`[${msg.role}] ${summarizeContent(msg)}`);
+            }
           }
         }
       } catch (err) {
@@ -134,7 +132,7 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
     .action(async (id: string, sessionId: string, title: string) => {
       const { dockerClient, formatter } = deps;
       try {
-        const result = await mechaSessionRename(dockerClient, { id, sessionId, title }) as SessionSummary;
+        const result = await mechaSessionRename(dockerClient, { id, sessionId, title });
         formatter.success(`Session ${sessionId} renamed to "${result.title}"`);
       } catch (err) {
         formatter.error(toUserMessage(err));
@@ -149,17 +147,14 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
 
   config
     .command("show <id> <sessionId>")
-    .description("Show session configuration")
+    .description("Show session summary (model, message count)")
     .action(async (id: string, sessionId: string) => {
       const { dockerClient, formatter } = deps;
       try {
-        const detail = await mechaSessionGet(dockerClient, { id, sessionId }) as SessionDetail;
-        const cfg = detail.config ?? {};
-        formatter.info(`Model: ${cfg.model ?? "(default)"}`);
-        formatter.info(`Permission mode: ${cfg.permissionMode ?? "(default)"}`);
-        formatter.info(`System prompt: ${cfg.systemPrompt ?? "(none)"}`);
-        formatter.info(`Max turns: ${cfg.maxTurns ?? "(unlimited)"}`);
-        formatter.info(`Max budget: ${cfg.maxBudgetUsd != null ? `$${cfg.maxBudgetUsd}` : "(unlimited)"}`);
+        const session: ParsedSession = await mechaSessionGet(dockerClient, { id, sessionId });
+        formatter.info(`Session: ${session.id}`);
+        formatter.info(`Model: ${session.model ?? "(default)"}`);
+        formatter.info(`Messages: ${session.messageCount}`);
       } catch (err) {
         formatter.error(toUserMessage(err));
         process.exitCode = toExitCode(err);
@@ -220,11 +215,7 @@ export function registerSessionsCommand(parent: Command, deps: CommandDeps): voi
           return;
         }
 
-        // Fetch current config and merge to avoid overwriting unset fields
-        const detail = await mechaSessionGet(dockerClient, { id, sessionId }) as SessionDetail;
-        const merged = { ...(detail.config ?? {}), ...configPayload };
-
-        await mechaSessionConfigUpdate(dockerClient, { id, sessionId, config: merged });
+        await mechaSessionConfigUpdate(dockerClient, { id, sessionId, config: configPayload });
         formatter.success(`Session ${sessionId} config updated`);
       } catch (err) {
         formatter.error(toUserMessage(err));

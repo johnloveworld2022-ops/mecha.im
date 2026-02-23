@@ -1,25 +1,15 @@
 /**
  * Session history: fetch session detail from the API and convert messages
  * to the ThreadMessageLike format expected by assistant-ui's useLocalRuntime.
+ *
+ * The API now returns ParsedSession with rich content blocks (ContentBlock[]).
  */
 
-/** Matches the runtime's SessionMessage shape returned by GET /api/mechas/:id/sessions/:sessionId */
-export interface SessionMessage {
-  role: "user" | "assistant";
-  content: string;
-  createdAt: string;
-}
-
-/** Matches the runtime's SessionDetail shape (subset we need) */
-export interface SessionDetail {
-  sessionId: string;
-  messages: SessionMessage[];
-  totalMessages: number;
-}
+import type { ContentBlock, ParsedMessage, ParsedSession } from "@mecha/core";
 
 /**
  * Shape expected by assistant-ui useLocalRuntime's `initialMessages` option.
- * Subset of ThreadMessageLike — we only produce text content.
+ * Subset of ThreadMessageLike — we produce text content with a computed `textContent`.
  */
 export interface InitialMessage {
   readonly role: "user" | "assistant";
@@ -27,37 +17,40 @@ export interface InitialMessage {
   readonly createdAt?: Date | undefined;
 }
 
+/** Extract plain text from rich ContentBlock[]. */
+function extractText(content: ContentBlock[]): string {
+  return content
+    .filter((b): b is ContentBlock & { type: "text" } => b.type === "text")
+    .map((b) => b.text)
+    .join("\n");
+}
+
 /**
- * Convert backend session messages to the format assistant-ui expects.
- * ThreadMessageLike accepts `content: string` directly for text-only messages.
+ * Convert backend parsed messages to the format assistant-ui expects.
+ * Extracts text from ContentBlock[] for display.
  */
-export function convertSessionMessages(messages: SessionMessage[]): InitialMessage[] {
+export function convertSessionMessages(messages: ParsedMessage[]): InitialMessage[] {
   return messages.map((m) => ({
     role: m.role,
-    content: m.content,
-    createdAt: new Date(m.createdAt),
+    content: extractText(m.content),
+    createdAt: m.timestamp instanceof Date ? m.timestamp : new Date(m.timestamp),
   }));
 }
 
 /**
  * Fetch a session's message history from the dashboard API.
  * Returns converted messages ready to pass as `initialMessages` to useLocalRuntime.
- *
- * @param mechaId - Container/mecha ID
- * @param sessionId - Session ID to fetch
- * @param limit - Max messages to fetch (default 200, the API maximum)
  */
 export async function fetchSessionHistory(
   mechaId: string,
   sessionId: string,
-  limit = 200,
 ): Promise<InitialMessage[]> {
   try {
     const res = await fetch(
-      `/api/mechas/${mechaId}/sessions/${sessionId}?limit=${limit}`,
+      `/api/mechas/${mechaId}/sessions/${sessionId}`,
     );
     if (!res.ok) return [];
-    const detail = (await res.json()) as SessionDetail;
+    const detail = (await res.json()) as ParsedSession;
     return convertSessionMessages(detail.messages ?? []);
   } catch {
     return [];

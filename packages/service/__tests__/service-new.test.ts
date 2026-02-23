@@ -14,6 +14,8 @@ import {
   mechaSessionMessage,
   mechaSessionInterrupt,
   mechaSessionConfigUpdate,
+  mechaSessionRename,
+  getMechaPath,
 } from "../src/service.js";
 import {
   TokenNotFoundError,
@@ -23,6 +25,45 @@ import {
   SessionBusyError,
   SessionCapReachedError,
 } from "@mecha/contracts";
+
+// --- node:fs mock ---
+const mockUnlinkSync = vi.fn();
+const mockLstatSync = vi.fn().mockReturnValue({ isSymbolicLink: () => false });
+vi.mock("node:fs", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    unlinkSync: (...a: unknown[]) => mockUnlinkSync(...a),
+    lstatSync: (...a: unknown[]) => mockLstatSync(...a),
+  };
+});
+
+// --- @mecha/core filesystem mocks ---
+const mockResolveProjectsDir = vi.fn().mockReturnValue("/mock/.claude/projects");
+const mockListSessionFiles = vi.fn().mockReturnValue([]);
+const mockParseSessionSummary = vi.fn().mockReturnValue({
+  id: "s1", projectSlug: "-home", title: "test", messageCount: 1,
+  model: "claude", createdAt: new Date(), updatedAt: new Date(),
+});
+const mockParseSessionFile = vi.fn().mockReturnValue({
+  id: "s1", projectSlug: "-home", title: "test", messageCount: 1,
+  model: "claude", createdAt: new Date(), updatedAt: new Date(), messages: [],
+});
+const mockGetAllSessionMeta = vi.fn().mockReturnValue({});
+const mockSetSessionMeta = vi.fn();
+
+vi.mock("@mecha/core", async (importOriginal) => {
+  const actual = await importOriginal() as Record<string, unknown>;
+  return {
+    ...actual,
+    resolveProjectsDir: (...a: unknown[]) => mockResolveProjectsDir(...a),
+    listSessionFiles: (...a: unknown[]) => mockListSessionFiles(...a),
+    parseSessionSummary: (...a: unknown[]) => mockParseSessionSummary(...a),
+    parseSessionFile: (...a: unknown[]) => mockParseSessionFile(...a),
+    getAllSessionMeta: (...a: unknown[]) => mockGetAllSessionMeta(...a),
+    setSessionMeta: (...a: unknown[]) => mockSetSessionMeta(...a),
+  };
+});
 
 // --- Mocks ---
 const mockEnsureNetwork = vi.fn().mockResolvedValue(undefined);
@@ -412,84 +453,133 @@ describe("mechaSessionCreate", () => {
   });
 });
 
-// --- mechaSessionList ---
-describe("mechaSessionList", () => {
-  beforeEach(() => setupRuntimeAccess());
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("throws on error response", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 500,
-      text: () => Promise.resolve("Server error"),
-    }));
-    await expect(mechaSessionList(client, { id: "mx-abc" })).rejects.toThrow("Session request failed");
+// --- getMechaPath ---
+describe("getMechaPath", () => {
+  it("returns path from container labels", async () => {
+    mockInspectContainer.mockResolvedValue({
+      Config: { Labels: { "mecha.path": "/home/user/project" } },
+    });
+    const path = await getMechaPath(client, "mx-abc");
+    expect(path).toBe("/home/user/project");
   });
 
-  it("sends GET to /api/sessions with auth", async () => {
-    const sessions = [{ sessionId: "s1" }, { sessionId: "s2" }];
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(sessions),
-    }));
-    const result = await mechaSessionList(client, { id: "mx-abc" });
-    expect(result).toEqual(sessions);
-    const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions");
-    expect(fetchCall[1].headers.get("Authorization")).toBe("Bearer test-token");
+  it("throws when label is missing", async () => {
+    mockInspectContainer.mockResolvedValue({ Config: { Labels: {} } });
+    await expect(getMechaPath(client, "mx-abc")).rejects.toThrow("has no mecha.path label");
+  });
+
+  it("throws when Config is undefined", async () => {
+    mockInspectContainer.mockResolvedValue({});
+    await expect(getMechaPath(client, "mx-abc")).rejects.toThrow("has no mecha.path label");
   });
 });
 
-// --- mechaSessionGet ---
-describe("mechaSessionGet", () => {
-  beforeEach(() => setupRuntimeAccess());
-  afterEach(() => vi.unstubAllGlobals());
-
-  it("sends GET to /api/sessions/:sid with auth", async () => {
-    const detail = { sessionId: "sess-abc", title: "Test", messages: [] };
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: true,
-      json: () => Promise.resolve(detail),
-    }));
-    const result = await mechaSessionGet(client, { id: "mx-abc", sessionId: "sess-abc" });
-    expect(result).toEqual(detail);
-    const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions/sess-abc");
+// --- mechaSessionList (filesystem-based) ---
+describe("mechaSessionList", () => {
+  beforeEach(() => {
+    mockInspectContainer.mockResolvedValue({
+      Config: { Labels: { "mecha.path": "/home/user/project" } },
+    });
   });
 
-  it("throws SessionNotFoundError on 404", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      text: () => Promise.resolve("Not found"),
-    }));
+  it("returns sessions from filesystem and metadata", async () => {
+    const summary = {
+      id: "s1", projectSlug: "-home", title: "test", messageCount: 1,
+      model: "claude", createdAt: new Date(), updatedAt: new Date(),
+    };
+    mockListSessionFiles.mockReturnValue([{ sessionId: "s1", filePath: "/path/s1.jsonl", projectSlug: "-home" }]);
+    mockParseSessionSummary.mockReturnValue(summary);
+    mockGetAllSessionMeta.mockReturnValue({ s1: { starred: true } });
+
+    const result = await mechaSessionList(client, { id: "mx-abc" });
+
+    expect(result.sessions).toEqual([summary]);
+    expect(result.meta).toEqual({ s1: { starred: true } });
+  });
+
+  it("returns empty when no session files exist", async () => {
+    mockListSessionFiles.mockReturnValue([]);
+    mockGetAllSessionMeta.mockReturnValue({});
+    const result = await mechaSessionList(client, { id: "mx-abc" });
+    expect(result.sessions).toEqual([]);
+    expect(result.meta).toEqual({});
+  });
+});
+
+// --- mechaSessionGet (filesystem-based) ---
+describe("mechaSessionGet", () => {
+  beforeEach(() => {
+    mockInspectContainer.mockResolvedValue({
+      Config: { Labels: { "mecha.path": "/home/user/project" } },
+    });
+  });
+
+  it("returns parsed session for matching ID", async () => {
+    const parsed = {
+      id: "sess-abc", projectSlug: "-home", title: "Test", messageCount: 0,
+      model: "claude", createdAt: new Date(), updatedAt: new Date(), messages: [],
+    };
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-abc", filePath: "/path/sess-abc.jsonl", projectSlug: "-home" }]);
+    mockParseSessionFile.mockReturnValue(parsed);
+
+    const result = await mechaSessionGet(client, { id: "mx-abc", sessionId: "sess-abc" });
+    expect(result).toEqual(parsed);
+  });
+
+  it("throws SessionNotFoundError when session file not found", async () => {
+    mockListSessionFiles.mockReturnValue([]);
     await expect(mechaSessionGet(client, { id: "mx-abc", sessionId: "bad-sess" })).rejects.toThrow(SessionNotFoundError);
   });
 });
 
-// --- mechaSessionDelete ---
+// --- mechaSessionDelete (filesystem + best-effort runtime) ---
 describe("mechaSessionDelete", () => {
-  beforeEach(() => setupRuntimeAccess());
+  beforeEach(() => {
+    setupRuntimeAccess();
+    mockInspectContainer.mockResolvedValue({
+      Config: { Labels: { "mecha.path": "/home/user/project" } },
+    });
+  });
   afterEach(() => vi.unstubAllGlobals());
 
-  it("sends DELETE, no error on success", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: true,
-      status: 204,
-    }));
+  it("deletes JSONL file and attempts runtime cleanup", async () => {
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-del", filePath: "/path/sess-del.jsonl", projectSlug: "-home" }]);
+    // Mock runtime fetch (best-effort cleanup)
+    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({ ok: true, status: 204 }));
+
     await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "sess-del" })).resolves.toBeUndefined();
-    const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
-    expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions/sess-del");
-    expect(fetchCall[1].method).toBe("DELETE");
+    expect(mockUnlinkSync).toHaveBeenCalledWith("/path/sess-del.jsonl");
   });
 
-  it("throws SessionNotFoundError on 404", async () => {
-    vi.stubGlobal("fetch", vi.fn().mockResolvedValueOnce({
-      ok: false,
-      status: 404,
-      text: () => Promise.resolve("Not found"),
-    }));
+  it("throws SessionNotFoundError when session file not found", async () => {
+    mockListSessionFiles.mockReturnValue([]);
     await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "bad-sess" })).rejects.toThrow(SessionNotFoundError);
+  });
+
+  it("rejects symlinked session files", async () => {
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-sym", filePath: "/path/sess-sym.jsonl", projectSlug: "-home" }]);
+    mockLstatSync.mockReturnValueOnce({ isSymbolicLink: () => true });
+    await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "sess-sym" })).rejects.toThrow("Refusing to delete symlinked session file");
+    expect(mockUnlinkSync).not.toHaveBeenCalled();
+  });
+
+  it("ignores ECONNREFUSED from runtime cleanup", async () => {
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-del2", filePath: "/path/sess-del2.jsonl", projectSlug: "-home" }]);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("fetch failed")));
+    await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "sess-del2" })).resolves.toBeUndefined();
+    expect(mockUnlinkSync).toHaveBeenCalledWith("/path/sess-del2.jsonl");
+  });
+
+  it("rethrows non-connection errors from runtime cleanup", async () => {
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-del3", filePath: "/path/sess-del3.jsonl", projectSlug: "-home" }]);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce(new Error("Internal server error")));
+    await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "sess-del3" })).rejects.toThrow("Internal server error");
+  });
+
+  it("rethrows non-Error thrown values from runtime cleanup", async () => {
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-del4", filePath: "/path/sess-del4.jsonl", projectSlug: "-home" }]);
+    vi.stubGlobal("fetch", vi.fn().mockRejectedValueOnce("string error"));
+    await expect(mechaSessionDelete(client, { id: "mx-abc", sessionId: "sess-del4" })).rejects.toBe("string error");
   });
 });
 
@@ -545,6 +635,27 @@ describe("mechaSessionInterrupt", () => {
     const fetchCall = (globalThis.fetch as ReturnType<typeof vi.fn>).mock.calls[0];
     expect(fetchCall[0]).toBe("http://127.0.0.1:7700/api/sessions/sess-int/interrupt");
     expect(fetchCall[1].method).toBe("POST");
+  });
+});
+
+// --- mechaSessionRename (metadata-based) ---
+describe("mechaSessionRename", () => {
+  beforeEach(() => {
+    mockInspectContainer.mockResolvedValue({
+      Config: { Labels: { "mecha.path": "/home/user/project" } },
+    });
+    mockListSessionFiles.mockReturnValue([{ sessionId: "sess-1", filePath: "/path/sess-1.jsonl", projectSlug: "-home" }]);
+  });
+
+  it("sets metadata and returns title", async () => {
+    const result = await mechaSessionRename(client, { id: "mx-abc", sessionId: "sess-1", title: "New Title" });
+    expect(result).toEqual({ title: "New Title" });
+    expect(mockSetSessionMeta).toHaveBeenCalledWith("mx-abc", "sess-1", { customTitle: "New Title" });
+  });
+
+  it("throws SessionNotFoundError when session file not found", async () => {
+    mockListSessionFiles.mockReturnValue([]);
+    await expect(mechaSessionRename(client, { id: "mx-abc", sessionId: "bad-sess", title: "Title" })).rejects.toThrow(SessionNotFoundError);
   });
 });
 

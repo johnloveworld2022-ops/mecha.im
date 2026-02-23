@@ -28,6 +28,7 @@ export {
   mechaSessionInterrupt,
   mechaSessionConfigUpdate,
   mechaSessionRename,
-  mechaSessionImport,
+  getMechaPath,
   mechaEject,
 } from "./service.js";
+export type { SessionListResult } from "./service.js";

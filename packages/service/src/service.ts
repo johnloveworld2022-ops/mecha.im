@@ -4,6 +4,7 @@ export { mechaLs, mechaStatus, mechaLogs, mechaInspect, mechaEnv, mechaToken, re
 export { mechaConfigure, mechaInit } from "./configure.js";
 export { mechaChat } from "./chat.js";
 export { mechaDoctor } from "./doctor.js";
-export { mechaSessionCreate, mechaSessionList, mechaSessionGet, mechaSessionDelete, mechaSessionMessage, mechaSessionInterrupt, mechaSessionConfigUpdate, mechaSessionRename, mechaSessionImport } from "./sessions.js";
+export { mechaSessionCreate, mechaSessionList, mechaSessionGet, mechaSessionDelete, mechaSessionMessage, mechaSessionInterrupt, mechaSessionConfigUpdate, mechaSessionRename, getMechaPath } from "./sessions.js";
+export type { SessionListResult } from "./sessions.js";
 export { loadDotEnvFiles } from "./env.js";
 export { mechaEject } from "./eject.js";

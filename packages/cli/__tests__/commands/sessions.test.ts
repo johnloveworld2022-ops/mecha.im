@@ -24,13 +24,55 @@ function createMockFormatter(): Formatter {
   return { info: vi.fn(), error: vi.fn(), success: vi.fn(), json: vi.fn(), table: vi.fn() };
 }
 
-const ZERO_USAGE = {
-  totalCostUsd: 0,
-  totalInputTokens: 0,
-  totalOutputTokens: 0,
-  totalDurationMs: 0,
-  turnCount: 0,
-};
+// Session summary matching new SessionSummary type from core
+function makeSummary(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "abcdef1234567890",
+    projectSlug: "-home-mecha",
+    title: "My Session",
+    messageCount: 5,
+    model: "claude-sonnet-4-6",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:00Z"),
+    ...overrides,
+  };
+}
+
+// Parsed session matching ParsedSession type
+function makeSession(overrides: Record<string, unknown> = {}) {
+  return {
+    id: "sess-abc",
+    projectSlug: "-home-mecha",
+    title: "Test Session",
+    messageCount: 2,
+    model: "claude-sonnet-4-6",
+    createdAt: new Date("2026-01-01T00:00:00Z"),
+    updatedAt: new Date("2026-01-01T00:00:01Z"),
+    messages: [
+      {
+        uuid: "u1",
+        parentUuid: null,
+        role: "user",
+        content: [{ type: "text", text: "Hello" }],
+        timestamp: new Date("2026-01-01T00:00:00Z"),
+      },
+      {
+        uuid: "a1",
+        parentUuid: "u1",
+        role: "assistant",
+        content: [
+          { type: "thinking", thinking: "Let me think about this request carefully" },
+          { type: "text", text: "Hi!" },
+          { type: "tool_use", id: "toolu_1", name: "Read", input: { file: "foo.ts" } },
+        ],
+        model: "claude-sonnet-4-6",
+        usage: { inputTokens: 500, outputTokens: 250 },
+        timestamp: new Date("2026-01-01T00:00:01Z"),
+      },
+    ],
+    ...overrides,
+  };
+}
 
 describe("mecha sessions", () => {
   let formatter: Formatter;
@@ -45,73 +87,46 @@ describe("mecha sessions", () => {
 
   // --- sessions list ---
 
-  it("sessions list calls mechaSessionList and outputs table with TURNS and COST", async () => {
-    mockMechaSessionList.mockResolvedValueOnce([
-      {
-        sessionId: "abcdef1234567890",
-        title: "My Session",
-        state: "idle",
-        messageCount: 5,
-        lastMessageAt: "2026-01-01T00:00:00Z",
-        createdAt: "2026-01-01T00:00:00Z",
-        usage: { totalCostUsd: 0.0035, totalInputTokens: 200, totalOutputTokens: 100, totalDurationMs: 1500, turnCount: 3 },
-      },
-    ]);
+  it("sessions list calls mechaSessionList and outputs table", async () => {
+    mockMechaSessionList.mockResolvedValueOnce({
+      sessions: [makeSummary()],
+      meta: {},
+    });
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "list", "mx-test"], { from: "user" });
 
     expect(mockMechaSessionList).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test" });
     expect(formatter.table).toHaveBeenCalledWith(
-      [
-        {
-          ID: "abcdef12",
-          TITLE: "My Session",
-          STATE: "idle",
-          MESSAGES: "5",
-          TURNS: "3",
-          COST: "$0.0035",
-          "LAST ACTIVITY": "2026-01-01T00:00:00Z",
-        },
-      ],
-      ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
+      [expect.objectContaining({
+        ID: "abcdef12",
+        TITLE: "My Session",
+        SLUG: "-home-mecha",
+        MESSAGES: "5",
+        MODEL: "claude-sonnet-4-6",
+        STARRED: "",
+      })],
+      ["ID", "TITLE", "SLUG", "MESSAGES", "MODEL", "STARRED", "UPDATED"],
     );
   });
 
-  it("sessions list shows (untitled) and dash for missing title/lastMessageAt", async () => {
-    mockMechaSessionList.mockResolvedValueOnce([
-      {
-        sessionId: "abcdef1234567890",
-        title: "",
-        state: "idle",
-        messageCount: 0,
-        lastMessageAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        usage: ZERO_USAGE,
-      },
-    ]);
+  it("sessions list applies custom title from meta and shows star", async () => {
+    mockMechaSessionList.mockResolvedValueOnce({
+      sessions: [makeSummary()],
+      meta: { abcdef1234567890: { customTitle: "Custom Title", starred: true } },
+    });
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "list", "mx-test"], { from: "user" });
 
     expect(formatter.table).toHaveBeenCalledWith(
-      [
-        {
-          ID: "abcdef12",
-          TITLE: "(untitled)",
-          STATE: "idle",
-          MESSAGES: "0",
-          TURNS: "0",
-          COST: "-",
-          "LAST ACTIVITY": "-",
-        },
-      ],
-      ["ID", "TITLE", "STATE", "MESSAGES", "TURNS", "COST", "LAST ACTIVITY"],
+      [expect.objectContaining({ TITLE: "Custom Title", STARRED: "*" })],
+      expect.any(Array),
     );
   });
 
   it("sessions list shows (no results) for empty list", async () => {
-    mockMechaSessionList.mockResolvedValueOnce([]);
+    mockMechaSessionList.mockResolvedValueOnce({ sessions: [], meta: {} });
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "list", "mx-test"], { from: "user" });
@@ -129,103 +144,85 @@ describe("mecha sessions", () => {
     expect(process.exitCode).toBe(1);
   });
 
-  it("sessions list handles missing usage gracefully", async () => {
-    mockMechaSessionList.mockResolvedValueOnce([
-      {
-        sessionId: "abcdef1234567890",
-        title: "No Usage",
-        state: "idle",
-        messageCount: 1,
-        lastMessageAt: null,
-        createdAt: "2026-01-01T00:00:00Z",
-        // no usage field
-      },
-    ]);
+  it("sessions list handles missing model gracefully", async () => {
+    mockMechaSessionList.mockResolvedValueOnce({
+      sessions: [makeSummary({ model: undefined })],
+      meta: {},
+    });
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "list", "mx-test"], { from: "user" });
 
     expect(formatter.table).toHaveBeenCalledWith(
-      [expect.objectContaining({ TURNS: "0", COST: "-" })],
+      [expect.objectContaining({ MODEL: "-" })],
       expect.any(Array),
     );
   });
 
   // --- sessions show ---
 
-  it("sessions show calls mechaSessionGet and shows detail with usage", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-abc",
-      title: "Test Session",
-      state: "idle",
-      messageCount: 2,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      config: {},
-      usage: { totalCostUsd: 0.15, totalInputTokens: 500, totalOutputTokens: 250, totalDurationMs: 3000, turnCount: 5 },
-      messages: [
-        { role: "user", content: "Hello", createdAt: "2026-01-01T00:00:01Z" },
-        { role: "assistant", content: "Hi!", createdAt: "2026-01-01T00:00:02Z" },
-      ],
-    });
+  it("sessions show displays session details and messages", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession());
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "show", "mx-test", "sess-abc"], { from: "user" });
 
     expect(mockMechaSessionGet).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test", sessionId: "sess-abc" });
     expect(formatter.info).toHaveBeenCalledWith("Session: sess-abc");
+    expect(formatter.info).toHaveBeenCalledWith("Project: -home-mecha");
     expect(formatter.info).toHaveBeenCalledWith("Title: Test Session");
-    expect(formatter.info).toHaveBeenCalledWith("State: idle");
     expect(formatter.info).toHaveBeenCalledWith("Messages: 2");
-    expect(formatter.info).toHaveBeenCalledWith("Turns: 5");
-    expect(formatter.info).toHaveBeenCalledWith("Cost: $0.15");
-    expect(formatter.info).toHaveBeenCalledWith("Input tokens: 500");
-    expect(formatter.info).toHaveBeenCalledWith("Output tokens: 250");
-    expect(formatter.info).toHaveBeenCalledWith("Duration: 3000ms");
     expect(formatter.info).toHaveBeenCalledWith("---");
-    expect(formatter.info).toHaveBeenCalledWith("[user] Hello");
-    expect(formatter.info).toHaveBeenCalledWith("[assistant] Hi!");
+    // Summarized content: thinking, text, tool_use
+    expect(formatter.info).toHaveBeenCalledWith(expect.stringContaining("[user] Hello"));
+    expect(formatter.info).toHaveBeenCalledWith(expect.stringContaining("[thinking:"));
+    expect(formatter.info).toHaveBeenCalledWith(expect.stringContaining("[tool: Read]"));
   });
 
-  it("sessions show handles untitled session", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-abc",
-      title: "",
-      state: "idle",
+  it("sessions show summarizes tool_result blocks", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession({
+      messages: [{
+        uuid: "a1",
+        parentUuid: null,
+        role: "assistant",
+        content: [{ type: "tool_result", tool_use_id: "t1", content: "result data" }],
+        timestamp: new Date("2026-01-01T00:00:00Z"),
+      }],
+      messageCount: 1,
+    }));
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "show", "mx-test", "sess-abc"], { from: "user" });
+
+    expect(formatter.info).toHaveBeenCalledWith("[assistant] [tool_result]");
+  });
+
+  it("sessions show --raw outputs JSON content blocks", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession());
+    const program = new Command();
+    registerSessionsCommand(program, deps);
+    await program.parseAsync(["sessions", "show", "mx-test", "sess-abc", "--raw"], { from: "user" });
+
+    // Raw mode outputs JSON.stringify(content)
+    expect(formatter.info).toHaveBeenCalledWith(expect.stringContaining('"type":"text"'));
+  });
+
+  it("sessions show handles empty session", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession({
+      title: "(untitled)",
       messageCount: 0,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      config: {},
-      usage: ZERO_USAGE,
+      model: undefined,
       messages: [],
-    });
+    }));
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "show", "mx-test", "sess-abc"], { from: "user" });
 
     expect(formatter.info).toHaveBeenCalledWith("Title: (untitled)");
-  });
-
-  it("sessions show handles missing usage gracefully", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-abc",
-      title: "No Usage",
-      state: "idle",
-      messageCount: 0,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      config: {},
-      messages: [],
-    });
-    const program = new Command();
-    registerSessionsCommand(program, deps);
-    await program.parseAsync(["sessions", "show", "mx-test", "sess-abc"], { from: "user" });
-
-    expect(formatter.info).toHaveBeenCalledWith("Turns: 0");
-    expect(formatter.info).toHaveBeenCalledWith("Cost: -");
-    expect(formatter.info).toHaveBeenCalledWith("Input tokens: 0");
-    expect(formatter.info).toHaveBeenCalledWith("Output tokens: 0");
-    expect(formatter.info).toHaveBeenCalledWith("Duration: 0ms");
+    expect(formatter.info).toHaveBeenCalledWith("Model: (unknown)");
+    // Should not have "---" separator when no messages
+    const infoCalls = (formatter.info as ReturnType<typeof vi.fn>).mock.calls.map((c: unknown[]) => c[0]);
+    expect(infoCalls).not.toContain("---");
   });
 
   it("sessions show reports error on failure", async () => {
@@ -294,15 +291,7 @@ describe("mecha sessions", () => {
   // --- sessions rename ---
 
   it("sessions rename calls mechaSessionRename and shows success", async () => {
-    mockMechaSessionRename.mockResolvedValueOnce({
-      sessionId: "sess-ren",
-      title: "New Title",
-      state: "idle",
-      messageCount: 3,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      usage: ZERO_USAGE,
-    });
+    mockMechaSessionRename.mockResolvedValueOnce({ title: "New Title" });
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "rename", "mx-test", "sess-ren", "New Title"], { from: "user" });
@@ -323,77 +312,23 @@ describe("mecha sessions", () => {
 
   // --- sessions config show ---
 
-  it("sessions config show displays config fields", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-cfg",
-      title: "Config Session",
-      state: "idle",
-      messageCount: 0,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      config: {
-        model: "claude-sonnet-4-5-20250514",
-        permissionMode: "plan",
-        systemPrompt: "You are helpful",
-        maxTurns: 10,
-        maxBudgetUsd: 5.0,
-      },
-      usage: ZERO_USAGE,
-      messages: [],
-    });
+  it("sessions config show displays session info", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession({ model: "claude-sonnet-4-6" }));
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
 
     expect(mockMechaSessionGet).toHaveBeenCalledWith(deps.dockerClient, { id: "mx-test", sessionId: "sess-cfg" });
-    expect(formatter.info).toHaveBeenCalledWith("Model: claude-sonnet-4-5-20250514");
-    expect(formatter.info).toHaveBeenCalledWith("Permission mode: plan");
-    expect(formatter.info).toHaveBeenCalledWith("System prompt: You are helpful");
-    expect(formatter.info).toHaveBeenCalledWith("Max turns: 10");
-    expect(formatter.info).toHaveBeenCalledWith("Max budget: $5");
+    expect(formatter.info).toHaveBeenCalledWith("Model: claude-sonnet-4-6");
   });
 
-  it("sessions config show shows defaults for empty config", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-cfg",
-      title: "",
-      state: "idle",
-      messageCount: 0,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      config: {},
-      usage: ZERO_USAGE,
-      messages: [],
-    });
+  it("sessions config show shows defaults for missing model", async () => {
+    mockMechaSessionGet.mockResolvedValueOnce(makeSession({ model: undefined }));
     const program = new Command();
     registerSessionsCommand(program, deps);
     await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
 
     expect(formatter.info).toHaveBeenCalledWith("Model: (default)");
-    expect(formatter.info).toHaveBeenCalledWith("Permission mode: (default)");
-    expect(formatter.info).toHaveBeenCalledWith("System prompt: (none)");
-    expect(formatter.info).toHaveBeenCalledWith("Max turns: (unlimited)");
-    expect(formatter.info).toHaveBeenCalledWith("Max budget: (unlimited)");
-  });
-
-  it("sessions config show handles missing config object", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      sessionId: "sess-cfg",
-      title: "",
-      state: "idle",
-      messageCount: 0,
-      lastMessageAt: null,
-      createdAt: "2026-01-01T00:00:00Z",
-      usage: ZERO_USAGE,
-      messages: [],
-      // no config field
-    });
-    const program = new Command();
-    registerSessionsCommand(program, deps);
-    await program.parseAsync(["sessions", "config", "show", "mx-test", "sess-cfg"], { from: "user" });
-
-    expect(formatter.info).toHaveBeenCalledWith("Model: (default)");
-    expect(formatter.info).toHaveBeenCalledWith("Max budget: (unlimited)");
   });
 
   it("sessions config show reports error on failure", async () => {
@@ -408,20 +343,7 @@ describe("mecha sessions", () => {
 
   // --- sessions config set ---
 
-  const EXISTING_SESSION_WITH_CONFIG = {
-    sessionId: "sess-cfg",
-    title: "Existing",
-    state: "idle",
-    messageCount: 0,
-    lastMessageAt: null,
-    createdAt: "2026-01-01T00:00:00Z",
-    config: { model: "claude-sonnet-4-5-20250514", maxTurns: 5 },
-    usage: ZERO_USAGE,
-    messages: [],
-  };
-
-  it("sessions config set merges with existing config and shows success", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce(EXISTING_SESSION_WITH_CONFIG);
+  it("sessions config set sends config update and shows success", async () => {
     mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
     const program = new Command();
     registerSessionsCommand(program, deps);
@@ -433,13 +355,12 @@ describe("mecha sessions", () => {
     expect(mockMechaSessionConfigUpdate).toHaveBeenCalledWith(deps.dockerClient, {
       id: "mx-test",
       sessionId: "sess-cfg",
-      config: { model: "claude-opus-4-20250514", maxTurns: 5 },
+      config: { model: "claude-opus-4-20250514" },
     });
     expect(formatter.success).toHaveBeenCalledWith("Session sess-cfg config updated");
   });
 
   it("sessions config set passes all options correctly", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({ ...EXISTING_SESSION_WITH_CONFIG, config: {} });
     mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
     const program = new Command();
     registerSessionsCommand(program, deps);
@@ -474,27 +395,6 @@ describe("mecha sessions", () => {
     expect(mockMechaSessionConfigUpdate).not.toHaveBeenCalled();
     expect(formatter.error).toHaveBeenCalledWith(expect.stringContaining("No config options provided"));
     expect(process.exitCode).toBe(1);
-  });
-
-  it("sessions config set handles missing config on existing session", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({
-      ...EXISTING_SESSION_WITH_CONFIG,
-      config: undefined,
-    });
-    mockMechaSessionConfigUpdate.mockResolvedValueOnce({ ok: true });
-    const program = new Command();
-    registerSessionsCommand(program, deps);
-    await program.parseAsync([
-      "sessions", "config", "set", "mx-test", "sess-cfg",
-      "--model", "claude-opus-4-20250514",
-    ], { from: "user" });
-
-    expect(mockMechaSessionConfigUpdate).toHaveBeenCalledWith(deps.dockerClient, {
-      id: "mx-test",
-      sessionId: "sess-cfg",
-      config: { model: "claude-opus-4-20250514" },
-    });
-    expect(formatter.success).toHaveBeenCalledWith("Session sess-cfg config updated");
   });
 
   it("sessions config set rejects invalid permission mode", async () => {
@@ -563,7 +463,6 @@ describe("mecha sessions", () => {
   });
 
   it("sessions config set reports error on failure", async () => {
-    mockMechaSessionGet.mockResolvedValueOnce({ ...EXISTING_SESSION_WITH_CONFIG, config: {} });
     mockMechaSessionConfigUpdate.mockRejectedValueOnce(new Error("update failed"));
     const program = new Command();
     registerSessionsCommand(program, deps);

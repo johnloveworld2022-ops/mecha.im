@@ -100,7 +100,19 @@ function ChatTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessionId
       const res = await fetch(`/api/mechas/${mechaId}/sessions`);
       if (res.ok) {
         const data = await res.json();
-        setSessions(mechaId, data);
+        const sessions = data.sessions ?? [];
+        const meta = data.meta ?? {};
+        setSessions(mechaId, sessions.map((s: Record<string, unknown>) => ({
+          id: s.id,
+          projectSlug: (s.projectSlug as string) ?? "",
+          title: (s.title as string) ?? "(untitled)",
+          messageCount: (s.messageCount as number) ?? 0,
+          model: s.model as string | undefined,
+          createdAt: s.createdAt instanceof Date ? (s.createdAt as Date).toISOString() : String(s.createdAt),
+          updatedAt: s.updatedAt instanceof Date ? (s.updatedAt as Date).toISOString() : String(s.updatedAt),
+          customTitle: (meta[s.id as string] as Record<string, unknown> | undefined)?.customTitle as string | undefined,
+          starred: (meta[s.id as string] as Record<string, unknown> | undefined)?.starred as boolean | undefined,
+        })));
       }
     } catch { /* ignore */ }
   }, [mechaId, setSessions]);
@@ -142,7 +154,7 @@ function OverviewTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessi
   const [error, setError] = useState("");
 
   const loadDetail = useCallback(async () => {
-    if (!sessionId || !isRunning) return;
+    if (!sessionId) return;
     setDetail(null);
     setError("");
     try {
@@ -155,11 +167,11 @@ function OverviewTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessi
     } catch {
       setError("Failed to load session");
     }
-  }, [mechaId, sessionId, isRunning]);
+  }, [mechaId, sessionId]);
 
   useEffect(() => { loadDetail(); }, [loadDetail]);
 
-  if (sessionId && isRunning) {
+  if (sessionId) {
     if (error) {
       return <p className="text-sm text-destructive p-4 md:p-6">{error}</p>;
     }
@@ -169,12 +181,14 @@ function OverviewTab({ mechaId, sessionId, isRunning }: { mechaId: string; sessi
     return (
       <div className="p-4 md:p-6 max-w-3xl space-y-6">
         <SessionInfo detail={detail} sessionId={sessionId} />
-        <SessionConfigEditor
-          mechaId={mechaId}
-          sessionId={sessionId}
-          initialConfig={detail.config ?? {}}
-          onSaved={loadDetail}
-        />
+        {isRunning && (
+          <SessionConfigEditor
+            mechaId={mechaId}
+            sessionId={sessionId}
+            initialConfig={{}}
+            onSaved={loadDetail}
+          />
+        )}
       </div>
     );
   }

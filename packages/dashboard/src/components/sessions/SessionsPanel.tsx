@@ -1,8 +1,7 @@
 "use client";
 
 import { useCallback, useEffect, useState } from "react";
-import { DownloadIcon, PlusIcon } from "lucide-react";
-import { TooltipIconButton } from "@/components/assistant-ui/tooltip-icon-button";
+import { ChevronRightIcon, PlusIcon } from "lucide-react";
 import { ScrollArea } from "@/components/ui/scroll-area";
 import { Button } from "@/components/ui/button";
 import {
@@ -19,55 +18,44 @@ import { SessionItem } from "./SessionItem";
 import { SessionSearch } from "./SessionSearch";
 import { SessionTabs } from "./SessionTabs";
 import { useDashboardStore, type Session } from "@/lib/store";
+import type { SessionSummary, SessionMeta } from "@mecha/core";
 
-function parseDateStr(dateStr: string): Date {
-  // SQLite datetime format "YYYY-MM-DD HH:MM:SS" → append T and Z for ISO
-  const normalized = dateStr.includes("T") ? dateStr : dateStr.replace(" ", "T") + "Z";
-  return new Date(normalized);
+interface SessionListResponse {
+  sessions: SessionSummary[];
+  meta: Record<string, SessionMeta>;
 }
 
-function getDateGroup(dateStr: string | null): string {
-  if (!dateStr) return "Older";
-  const date = parseDateStr(dateStr);
-  if (isNaN(date.getTime())) return "Older";
-  const now = new Date();
-  const today = new Date(now.getFullYear(), now.getMonth(), now.getDate());
-  const yesterday = new Date(today);
-  yesterday.setDate(yesterday.getDate() - 1);
-  const weekAgo = new Date(today);
-  weekAgo.setDate(weekAgo.getDate() - 7);
-
-  if (date >= today) return "Today";
-  if (date >= yesterday) return "Yesterday";
-  if (date >= weekAgo) return "Previous 7 days";
-  return "Older";
+function toStoreSession(s: SessionSummary, meta?: SessionMeta): Session {
+  return {
+    id: s.id,
+    projectSlug: s.projectSlug,
+    title: s.title,
+    messageCount: s.messageCount,
+    model: s.model,
+    createdAt: s.createdAt instanceof Date ? s.createdAt.toISOString() : String(s.createdAt),
+    updatedAt: s.updatedAt instanceof Date ? s.updatedAt.toISOString() : String(s.updatedAt),
+    customTitle: meta?.customTitle,
+    starred: meta?.starred,
+  };
 }
 
-function groupSessions(sessions: Session[], starredIds: string[]): Array<{ label: string; sessions: Session[] }> {
-  const starredSet = new Set(starredIds);
-  const starred = sessions.filter((s) => starredSet.has(s.sessionId));
-  const unstarred = sessions.filter((s) => !starredSet.has(s.sessionId));
+interface SlugGroup {
+  slug: string;
+  sessions: Session[];
+}
 
-  const order = ["Today", "Yesterday", "Previous 7 days", "Older"];
-  const groups = new Map<string, Session[]>();
-
-  for (const s of unstarred) {
-    const label = getDateGroup(s.lastMessageAt ?? s.createdAt);
-    const arr = groups.get(label) ?? [];
+function groupBySlug(sessions: Session[]): SlugGroup[] {
+  const map = new Map<string, Session[]>();
+  for (const s of sessions) {
+    const arr = map.get(s.projectSlug) ?? [];
     arr.push(s);
-    groups.set(label, arr);
+    map.set(s.projectSlug, arr);
   }
-
-  const result: Array<{ label: string; sessions: Session[] }> = [];
-  if (starred.length > 0) {
-    result.push({ label: "Starred", sessions: starred });
+  const groups: SlugGroup[] = [];
+  for (const [slug, slugSessions] of map) {
+    groups.push({ slug, sessions: slugSessions });
   }
-  for (const label of order) {
-    if (groups.has(label)) {
-      result.push({ label, sessions: groups.get(label)! });
-    }
-  }
-  return result;
+  return groups;
 }
 
 export function SessionsPanel() {
@@ -84,11 +72,10 @@ export function SessionsPanel() {
   const setActiveTab = useDashboardStore((s) => s.setActiveTab);
   const searchQuery = useDashboardStore((s) => s.searchQuery);
   const setSearchQuery = useDashboardStore((s) => s.setSearchQuery);
-  const starredSessions = useDashboardStore((s) => s.starredSessions);
-  const toggleStarred = useDashboardStore((s) => s.toggleStarred);
 
   const [loading, setLoading] = useState(false);
   const [confirmDelete, setConfirmDelete] = useState<string | null>(null);
+  const [collapsedSlugs, setCollapsedSlugs] = useState<Set<string>>(new Set());
 
   const selectedMecha = mechas.find((m) => m.id === selectedMechaId);
   const mechaSessions = selectedMechaId ? sessions[selectedMechaId] ?? [] : [];
@@ -97,13 +84,21 @@ export function SessionsPanel() {
   const filteredSessions = searchQuery
     ? mechaSessions.filter(
         (s) =>
-          s.title.toLowerCase().includes(searchQuery.toLowerCase()) ||
-          s.sessionId.includes(searchQuery),
+          (s.customTitle ?? s.title).toLowerCase().includes(searchQuery.toLowerCase()) ||
+          s.id.includes(searchQuery),
       )
     : mechaSessions;
 
-  const starredIds = selectedMechaId ? starredSessions[selectedMechaId] ?? [] : [];
-  const grouped = groupSessions(filteredSessions, starredIds);
+  const slugGroups = groupBySlug(filteredSessions);
+
+  const toggleSlugCollapsed = useCallback((slug: string) => {
+    setCollapsedSlugs((prev) => {
+      const next = new Set(prev);
+      if (next.has(slug)) next.delete(slug);
+      else next.add(slug);
+      return next;
+    });
+  }, []);
 
   const createSession = useCallback(async () => {
     if (!selectedMechaId) return;
@@ -115,8 +110,15 @@ export function SessionsPanel() {
       });
       if (res.ok) {
         const session = await res.json();
-        addSession(selectedMechaId, session);
-        setSelectedSessionId(session.sessionId);
+        addSession(selectedMechaId, {
+          id: session.sessionId ?? session.id,
+          projectSlug: session.projectSlug ?? "",
+          title: session.title ?? "(untitled)",
+          messageCount: 0,
+          createdAt: new Date().toISOString(),
+          updatedAt: new Date().toISOString(),
+        });
+        setSelectedSessionId(session.sessionId ?? session.id);
       }
     } catch { /* ignore */ }
   }, [selectedMechaId, addSession, setSelectedSessionId]);
@@ -130,8 +132,7 @@ export function SessionsPanel() {
         body: JSON.stringify({ title }),
       });
       if (res.ok) {
-        const data = await res.json();
-        updateSession(selectedMechaId, sessionId, { title: data.title ?? title });
+        updateSession(selectedMechaId, sessionId, { customTitle: title });
       }
     } catch { /* network error — UI stays unchanged */ }
   }, [selectedMechaId, updateSession]);
@@ -147,60 +148,37 @@ export function SessionsPanel() {
       if (res.ok) {
         removeSession(selectedMechaId, sessionId);
 
-        // If deleted session was active, select next or auto-create
         if (selectedSessionId === sessionId) {
-          const remaining = mechaSessions.filter(
-            (s) => s.sessionId !== sessionId,
-          );
+          const remaining = mechaSessions.filter((s) => s.id !== sessionId);
           if (remaining.length > 0) {
-            setSelectedSessionId(remaining[0].sessionId);
-          } else {
+            setSelectedSessionId(remaining[0].id);
+          } else if (isRunning) {
             createSession();
+          } else {
+            setSelectedSessionId(null);
           }
         }
       }
     } catch { /* network error — no state change */ }
   }, [selectedMechaId, confirmDelete, removeSession, selectedSessionId, mechaSessions, setSelectedSessionId, createSession]);
 
-  const handleInterrupt = useCallback(async (sessionId: string) => {
+  const handleStar = useCallback(async (sessionId: string) => {
     if (!selectedMechaId) return;
+    const session = mechaSessions.find((s) => s.id === sessionId);
+    const newStarred = !(session?.starred);
+    updateSession(selectedMechaId, sessionId, { starred: newStarred });
+    // Persist to server-side metadata
     try {
-      const res = await fetch(`/api/mechas/${selectedMechaId}/sessions/${sessionId}/interrupt`, {
-        method: "POST",
+      await fetch(`/api/mechas/${selectedMechaId}/sessions/${sessionId}`, {
+        method: "PATCH",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ starred: newStarred }),
       });
-      if (res.ok) {
-        updateSession(selectedMechaId, sessionId, { state: "idle" });
-      }
-    } catch { /* network error — no state change */ }
-  }, [selectedMechaId, updateSession]);
-
-  const handleStar = useCallback((sessionId: string) => {
-    if (!selectedMechaId) return;
-    toggleStarred(selectedMechaId, sessionId);
-  }, [selectedMechaId, toggleStarred]);
-
-  const handleImport = useCallback(async () => {
-    if (!selectedMechaId) return;
-    try {
-      const res = await fetch(`/api/mechas/${selectedMechaId}/sessions/import`, {
-        method: "POST",
-      });
-      if (res.ok) {
-        const data = await res.json();
-        if (data.imported > 0) {
-          // Re-fetch session list
-          const listRes = await fetch(`/api/mechas/${selectedMechaId}/sessions`);
-          if (listRes.ok) {
-            const newSessions = await listRes.json();
-            setSessions(selectedMechaId, newSessions);
-          }
-        }
-      }
-    } catch { /* ignore */ }
-  }, [selectedMechaId, setSessions]);
+    } catch { /* optimistic update already applied */ }
+  }, [selectedMechaId, mechaSessions, updateSession]);
 
   useEffect(() => {
-    if (!selectedMechaId || !isRunning) return;
+    if (!selectedMechaId) return;
     const mechaId = selectedMechaId;
     const controller = new AbortController();
 
@@ -212,14 +190,17 @@ export function SessionsPanel() {
         });
         if (controller.signal.aborted) return;
         if (!res.ok) return;
-        const data = (await res.json()) as Session[];
+        const data = (await res.json()) as SessionListResponse;
         if (controller.signal.aborted) return;
 
-        setSessions(mechaId, data);
+        const storeSessions = data.sessions.map((s) =>
+          toStoreSession(s, data.meta[s.id]),
+        );
+        setSessions(mechaId, storeSessions);
 
-        if (data.length > 0) {
-          setSelectedSessionId(data[0].sessionId);
-        } else {
+        if (storeSessions.length > 0) {
+          setSelectedSessionId(storeSessions[0].id);
+        } else if (isRunning) {
           // No sessions — auto-create one
           const createRes = await fetch(`/api/mechas/${mechaId}/sessions`, {
             method: "POST",
@@ -229,8 +210,15 @@ export function SessionsPanel() {
           });
           if (controller.signal.aborted || !createRes.ok) return;
           const session = await createRes.json();
-          addSession(mechaId, session);
-          setSelectedSessionId(session.sessionId);
+          addSession(mechaId, {
+            id: session.sessionId ?? session.id,
+            projectSlug: session.projectSlug ?? "",
+            title: session.title ?? "(untitled)",
+            messageCount: 0,
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString(),
+          });
+          setSelectedSessionId(session.sessionId ?? session.id);
         }
       } catch {
         // aborted or network error — ignore
@@ -267,11 +255,6 @@ export function SessionsPanel() {
             {selectedMecha?.path || ""}
           </span>
         </div>
-        {isRunning && (
-          <TooltipIconButton tooltip="Import transcripts" variant="ghost" size="icon-xs" onClick={handleImport}>
-            <DownloadIcon className="size-3.5" />
-          </TooltipIconButton>
-        )}
       </div>
 
       {/* Search */}
@@ -294,7 +277,7 @@ export function SessionsPanel() {
         </div>
       )}
 
-      {/* Sessions list */}
+      {/* Sessions list — file explorer tree */}
       <ScrollArea className="flex-1 min-h-0 px-2 py-1">
         {loading ? (
           <div className="flex flex-col gap-2 p-2">
@@ -317,22 +300,30 @@ export function SessionsPanel() {
           </div>
         ) : (
           <div className="flex flex-col gap-0.5">
-            {grouped.map((group) => (
-              <div key={group.label}>
-                <div className="px-2 pt-3 pb-1 text-xs font-medium text-muted-foreground">
-                  {group.label}
-                </div>
-                {group.sessions.map((s) => (
+            {slugGroups.map((group) => (
+              <div key={group.slug}>
+                {/* Project slug folder header */}
+                <button
+                  onClick={() => toggleSlugCollapsed(group.slug)}
+                  className="flex w-full items-center gap-1 rounded-sm px-2 py-1.5 text-xs font-medium text-muted-foreground hover:bg-accent hover:text-accent-foreground"
+                >
+                  <ChevronRightIcon
+                    className={`size-3 transition-transform ${collapsedSlugs.has(group.slug) ? "" : "rotate-90"}`}
+                  />
+                  {group.slug}
+                  <span className="ml-auto text-xs opacity-60">{group.sessions.length}</span>
+                </button>
+                {/* Session leaves */}
+                {!collapsedSlugs.has(group.slug) && group.sessions.map((s) => (
                   <SessionItem
-                    key={s.sessionId}
+                    key={s.id}
                     session={s}
-                    isActive={selectedSessionId === s.sessionId}
-                    starred={starredIds.includes(s.sessionId)}
-                    onClick={() => setSelectedSessionId(s.sessionId)}
+                    isActive={selectedSessionId === s.id}
+                    starred={s.starred ?? false}
+                    onClick={() => setSelectedSessionId(s.id)}
                     onRename={handleRename}
                     onDelete={(sid) => setConfirmDelete(sid)}
                     onStar={handleStar}
-                    onInterrupt={handleInterrupt}
                   />
                 ))}
               </div>

@@ -153,12 +153,12 @@ export async function runtimeFetch(
   client: DockerClient,
   mechaId: string,
   path: string,
-  init?: RequestInit & { sessionId?: string },
+  init: RequestInit & { sessionId?: string } = {},
 ): Promise<Response> {
   const { url, token } = await getRuntimeAccess(client, mechaId);
-  const { sessionId, ...fetchInit } = init ?? {};
+  const { sessionId, ...fetchInit } = init;
   // Only apply default timeout if caller did not explicitly provide a signal key
-  const hasExplicitSignal = init !== undefined && "signal" in init;
+  const hasExplicitSignal = "signal" in init;
   // Use Headers API to guarantee auth cannot be overridden (case-insensitive dedup)
   const headers = new Headers(fetchInit.headers as Record<string, string>);
   headers.set("Authorization", `Bearer ${token}`);

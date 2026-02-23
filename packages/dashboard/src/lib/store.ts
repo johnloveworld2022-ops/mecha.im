@@ -18,23 +18,20 @@ export interface MechaWithNode extends MechaInfo {
   node: string;
 }
 
-export interface SessionUsage {
-  totalCostUsd: number;
-  totalInputTokens: number;
-  totalOutputTokens: number;
-  totalDurationMs: number;
-  turnCount: number;
-}
-
+/** Session summary from the filesystem-based API. */
 export interface Session {
-  sessionId: string;
+  /** JSONL filename UUID — canonical session ID. */
+  id: string;
+  /** Project slug directory name. */
+  projectSlug: string;
   title: string;
-  state: "idle" | "busy";
   messageCount: number;
-  lastMessageAt: string | null;
+  model?: string;
   createdAt: string;
-  usage?: SessionUsage;
-  config?: Record<string, unknown>;
+  updatedAt: string;
+  /** Dashboard-only metadata (stars, custom titles). */
+  customTitle?: string;
+  starred?: boolean;
 }
 
 export type ActiveTab = "chat" | "overview" | "terminal" | "inspect";
@@ -54,7 +51,7 @@ interface DashboardState {
   setSessions: (mechaId: string, s: Session[]) => void;
   addSession: (mechaId: string, s: Session) => void;
   removeSession: (mechaId: string, sessionId: string) => void;
-  updateSession: (mechaId: string, sessionId: string, updates: Partial<Pick<Session, "title" | "state">>) => void;
+  updateSession: (mechaId: string, sessionId: string, updates: Partial<Pick<Session, "title" | "customTitle" | "starred">>) => void;
 
   // Selected session
   selectedSessionId: string | null;
@@ -67,10 +64,6 @@ interface DashboardState {
   // Rail state
   collapsedNodes: Record<string, boolean>;
   toggleNodeCollapsed: (node: string) => void;
-
-  // Starred sessions (mechaId → sessionIds, persisted)
-  starredSessions: Record<string, string[]>;
-  toggleStarred: (mechaId: string, sessionId: string) => void;
 
   // Search
   searchQuery: string;
@@ -114,7 +107,7 @@ export const useDashboardStore = create<DashboardState>()(
           sessions: {
             ...s.sessions,
             [mechaId]: (s.sessions[mechaId] ?? []).filter(
-              (sess) => sess.sessionId !== sessionId,
+              (sess) => sess.id !== sessionId,
             ),
           },
         })),
@@ -123,7 +116,7 @@ export const useDashboardStore = create<DashboardState>()(
           sessions: {
             ...s.sessions,
             [mechaId]: (s.sessions[mechaId] ?? []).map(
-              (sess) => sess.sessionId === sessionId ? { ...sess, ...updates } : sess,
+              (sess) => sess.id === sessionId ? { ...sess, ...updates } : sess,
             ),
           },
         })),
@@ -146,21 +139,6 @@ export const useDashboardStore = create<DashboardState>()(
           },
         })),
 
-      // Starred sessions
-      starredSessions: {},
-      toggleStarred: (mechaId, sessionId) =>
-        set((s) => {
-          const current = s.starredSessions[mechaId] ?? [];
-          const isCurrentlyStarred = current.includes(sessionId);
-          return {
-            starredSessions: {
-              ...s.starredSessions,
-              [mechaId]: isCurrentlyStarred
-                ? current.filter((id) => id !== sessionId)
-                : [...current, sessionId],
-            },
-          };
-        }),
       // Search
       searchQuery: "",
       setSearchQuery: (searchQuery) => set({ searchQuery }),
@@ -175,7 +153,6 @@ export const useDashboardStore = create<DashboardState>()(
         selectedMechaId: state.selectedMechaId,
         activeTab: state.activeTab,
         collapsedNodes: state.collapsedNodes,
-        starredSessions: state.starredSessions,
       }),
     },
   ),
