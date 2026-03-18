@@ -5,6 +5,7 @@
 - **Node.js 22+**
 - **Docker** — Colima, Docker Desktop, OrbStack, or any OCI runtime
 - **Claude Code** — installed and authenticated (`npm install -g @anthropic-ai/claude-code`)
+- **Codex CLI** (optional) — if you want to use the tracked `.codex/prompts/` and `.codex/skills/` workspace helpers
 - **Tailscale** (optional) — for multi-machine bot-to-bot mesh
 
 ## Install
@@ -52,7 +53,7 @@ mecha --version
 mecha doctor
 ```
 
-`mecha doctor` checks that Docker is running, the image is built, and Claude Code is available.
+`mecha doctor` checks that Docker is running, the image is built, and Claude Code is available. Codex CLI remains optional on the host, but Mecha will mount a workspace's tracked `.codex/` helpers into containers when they exist.
 
 ## Set Up Auth
 
