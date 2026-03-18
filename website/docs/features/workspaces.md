@@ -38,11 +38,16 @@ Writable workspaces give the bot full write access to the mounted directory. Pai
 ## Project Settings
 
 When a workspace is mounted, the bot loads project settings from it:
-- `.claude/settings.json`
-- `CLAUDE.md`
+- `AGENTS.md` for shared agent instructions
+- `.claude/settings.json` and `CLAUDE.md` for Claude Code-specific behavior
+- `.codex/prompts/` and `.codex/skills/` for Codex CLI workflows
 - Skills and plugins
 
 Bots without a mounted workspace run from a stable state-backed working directory and only load user-level settings.
+
+## Codex CLI Helpers
+
+This repository tracks Codex CLI prompt definitions in `.codex/prompts/` so common maintenance workflows can be reused across assistants without copying instructions by hand.
 
 ## Host Codex Auth
 

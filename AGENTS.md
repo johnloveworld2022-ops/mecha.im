@@ -23,3 +23,10 @@ This ensures Claude Code, Codex CLI, and Gemini CLI share the same context consi
 - `.gemini/skills/` - Gemini CLI skills
 - `.gemini/commands/` - Gemini CLI custom slash commands (TOML)
 - `.mcp.json` - MCP server configuration
+
+## Codex CLI Repository Notes
+
+- Keep shared cross-assistant behavior in the repository root `AGENTS.md`.
+- Store tracked Codex CLI reusable prompts in `.codex/prompts/`.
+- Store tracked Codex CLI reusable skills in `.codex/skills/`.
+- Do not commit local Codex auth/session files; only commit reusable project assets.

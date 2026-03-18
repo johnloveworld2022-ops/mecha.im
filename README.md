@@ -1,6 +1,6 @@
 # Mecha
 
-An army of agents. Run autonomous Claude bots in Docker containers with scheduling, webhooks, and bot-to-bot communication over Tailscale.
+An army of agents. Run autonomous Claude bots in Docker containers with scheduling, webhooks, and bot-to-bot communication over Tailscale, while keeping your workspace ready for Codex CLI, Claude Code, and Gemini CLI.
 
 ## Quickstart
 
@@ -143,9 +143,18 @@ Profiles are stored at `~/.mecha/auth/<name>.json`.
 
 ## Container Runtime Notes
 
-- Workspace-mounted bots load project settings (`.claude/settings.json`, `CLAUDE.md`, skills) from the mounted workspace.
+- Workspace-mounted bots load shared project instructions from `AGENTS.md`, Claude Code settings from `.claude/`, and Codex CLI prompts/skills from `.codex/` when present.
 - Bots without a mounted workspace run from a stable state-backed working directory and only load user settings.
 - Host Codex auth is not copied into containers by default. Opt in with `MECHA_COPY_HOST_CODEX_AUTH=1` if you explicitly want that behavior.
+
+## Codex CLI Workspace Support
+
+This repository now includes tracked Codex CLI prompt files under `.codex/prompts/` so the same operational workflows are available in Codex CLI as slash-style prompts:
+
+- `bump-version` — bump versions, build, tag, publish
+- `hot-dashboard` — build and hot-deploy the bot dashboard for preview
+
+The root `AGENTS.md` remains the shared source of truth for Claude Code, Codex CLI, and Gemini CLI instructions.
 
 ## Testing
 
