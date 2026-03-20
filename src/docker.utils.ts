@@ -5,10 +5,11 @@ import { homedir } from "node:os";
 import { execFileSync } from "node:child_process";
 import { getMutex } from "../shared/mutex.js";
 import { ProcessSpawnError } from "../shared/errors.js";
-import { resolveAuth, getCredential, getPassthroughCredentials, loadCredentials } from "./auth.js";
+import { resolveAuthForRuntime, getCredential, getPassthroughCredentials, loadCredentials } from "./auth.js";
 import { getOrCreateFleetInternalSecret, readSettings } from "./store.js";
 import { stringify as stringifyYaml } from "yaml";
 import type { BotConfig } from "./config.js";
+import { resolveRuntime } from "../shared/runtime.js";
 
 const docker = new Docker();
 
@@ -139,9 +140,9 @@ export function buildBinds(resolvedPath: string, configPath: string, config: Bot
   if (existsSync(join(sshDir, "id_ed25519"))) {
     binds.push(`${realpathSync(sshDir)}:/home/appuser/.ssh:ro`);
   }
-  // Write filtered credentials (Claude auth profiles only) to bot state dir
+  // Write only credentials relevant to this bot/runtime to the bot state dir
   // This avoids mounting the full credentials store which contains unrelated secrets
-  writeBotCredentials(resolvedPath, config.auth);
+  writeBotCredentials(resolvedPath, config.auth, resolveRuntime(config.runtime, config.model));
   if (config.workspace) {
     const wsPath = realpathSync(config.workspace);
     // Restrict workspace mount to home directory to prevent mounting system paths
@@ -157,16 +158,20 @@ export function buildBinds(resolvedPath: string, configPath: string, config: Bot
 
 /** Build container environment variables from config and auth */
 export async function buildContainerEnv(config: BotConfig, botToken: string): Promise<string[]> {
-  const auth = resolveAuth(config.auth);
+  const runtime = resolveRuntime(config.runtime, config.model);
+  const auth = resolveAuthForRuntime(runtime, config.auth);
   const env = [
     `S6_KEEP_ENV=1`,
-    `${auth.env}=${auth.key}`,
     `MECHA_BOT_NAME=${config.name}`,
     `MECHA_BOT_TOKEN=${botToken}`,
     `MECHA_FLEET_INTERNAL_SECRET=${getOrCreateFleetInternalSecret()}`,
     `MECHA_WORKSPACE_CWD=${config.workspace ? "/home/appuser/workspace" : "/state/workspace"}`,
     `MECHA_ENABLE_PROJECT_SETTINGS=${config.workspace ? "1" : "0"}`,
+    `MECHA_RUNTIME=${runtime}`,
   ];
+  if (auth) {
+    env.push(`${auth.env}=${auth.key}`);
+  }
 
   const passthroughKeys = ["OPENAI_API_KEY", "GEMINI_API_KEY", "XAI_API_KEY"];
   const passthrough = getPassthroughCredentials(passthroughKeys);
@@ -222,28 +227,35 @@ async function getDockerGatewayIp(): Promise<string> {
 }
 
 /**
- * Write a filtered credentials.yaml into the bot's state dir.
- * Only includes Claude auth profiles (api_key + oauth_token) — no unrelated secrets.
- * Lives in /state/ (rw mount) so it's always accessible and updatable.
+ * Write only credentials needed by this bot/runtime to its state dir.
+ * This avoids exposing the full host credentials file in-container.
  */
-/** Write only the bot's assigned credential (not all profiles) to its state dir */
-export function writeBotCredentials(resolvedPath: string, authProfile?: string): void {
+export function writeBotCredentials(resolvedPath: string, authProfile: string | undefined, runtime: "claude" | "codex"): void {
   const creds = loadCredentials();
-  // Only include the specific credential assigned to this bot, not all profiles
-  const claudeCreds = authProfile
-    ? creds.filter((c) => c.name === authProfile && (c.type === "api_key" || c.type === "oauth_token"))
-    : creds.filter((c) => c.type === "api_key" || c.type === "oauth_token").slice(0, 1);
+  const allowed = runtime === "claude"
+    ? (c: { type: string; env: string }) => c.type === "api_key" || c.type === "oauth_token"
+    : (c: { type: string; env: string }) => c.type === "api_key" && c.env === "OPENAI_API_KEY";
+
+  // Only include the specific credential assigned to this bot when present.
+  const selectedCreds = authProfile
+    ? creds.filter((c) => c.name === authProfile && allowed(c))
+    : creds.filter((c) => allowed(c)).slice(0, 1);
   const outPath = join(resolvedPath, "credentials.yaml");
-  const content = stringifyYaml({ credentials: claudeCreds }, { lineWidth: 0 });
+  const content = stringifyYaml({ credentials: selectedCreds }, { lineWidth: 0 });
   writeFileSync(outPath, content, { mode: 0o644 });
   chmodSync(outPath, 0o644);
 }
 
-/** Copy host Codex auth to bot if opted in */
+/**
+ * Copy host Codex auth to bot by default.
+ * Set MECHA_COPY_HOST_CODEX_AUTH=0 to disable this behavior.
+ */
 export function copyHostCodexAuth(resolvedPath: string): void {
+  const copyPolicy = (process.env.MECHA_COPY_HOST_CODEX_AUTH ?? "").toLowerCase();
+  if (copyPolicy === "0" || copyPolicy === "false" || copyPolicy === "no") return;
   const hostCodexAuth = join(homedir(), ".codex", "auth.json");
   const botCodexAuth = join(resolvedPath, ".codex", "auth.json");
-  if (process.env.MECHA_COPY_HOST_CODEX_AUTH === "1" && existsSync(hostCodexAuth) && !existsSync(botCodexAuth)) {
+  if (existsSync(hostCodexAuth) && !existsSync(botCodexAuth)) {
     writeFileSync(botCodexAuth, readFileSync(hostCodexAuth, "utf-8"), { mode: 0o600 });
   }
 }

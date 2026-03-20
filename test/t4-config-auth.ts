@@ -76,6 +76,17 @@ await test("T4.4 buildInlineConfig defaults", () => {
   assert.equal(config.permission_mode, "default");
 });
 
+// T4.4b buildInlineConfig defaults for codex runtime
+await test("T4.4b buildInlineConfig codex defaults", () => {
+  const config = buildInlineConfig({
+    name: "inline-codex",
+    system: "You are inline codex",
+    runtime: "codex",
+  });
+  assert.equal(config.runtime, "codex");
+  assert.equal(config.model, "gpt-5.3-codex");
+});
+
 // T4.5 buildInlineConfig with custom model
 await test("T4.5 buildInlineConfig custom model", () => {
   const config = buildInlineConfig({
@@ -201,6 +212,14 @@ await test("T4.14 resolveAuth from credential", () => {
   assert.equal(resolved.key, "sk-ant-oat01-test456");
   assert.equal(resolved.env, "CLAUDE_CODE_OAUTH_TOKEN");
   assert.equal(resolved.source, "profile:test-oauth");
+});
+
+// T4.14b resolveAuthForRuntime codex from env
+await test("T4.14b resolveAuthForRuntime codex", () => {
+  process.env.OPENAI_API_KEY = "sk-openai-test";
+  const resolved = auth.resolveAuthForRuntime("codex");
+  assert.equal(resolved?.env, "OPENAI_API_KEY");
+  delete process.env.OPENAI_API_KEY;
 });
 
 // T4.15 Update existing credential

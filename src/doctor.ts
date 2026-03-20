@@ -2,7 +2,7 @@
  * mecha doctor — diagnose mecha and bot health
  *
  * `mecha doctor`        → check mecha-level health (Docker, image, settings)
- * `mecha doctor <bot>`  → check bot container health (mounts, SDK config, claude pickup, auth, runtime)
+ * `mecha doctor <bot>`  → check bot container health (mounts, SDK config, assistant config pickup, auth, runtime)
  */
 import { existsSync } from "node:fs";
 import { join } from "node:path";
@@ -86,7 +86,7 @@ export async function doctorBot(name: string): Promise<number> {
   console.log("\n[Runtime]");
   tally(report(await checkRuntime(container)));
 
-  console.log("\n[Claude Config Pickup]");
+  console.log("\n[Assistant Config Pickup]");
   tally(report(await checkClaudePickup(container)));
 
   console.log(`\n--- ${totalPassed} passed, ${totalFailed} failed ---`);

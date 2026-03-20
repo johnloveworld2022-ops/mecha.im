@@ -23,6 +23,7 @@ import {
 } from "./docker.utils.js";
 import { getMutex } from "../shared/mutex.js";
 import type { SpawnOptions, BotInfo } from "./docker.types.js";
+import { resolveRuntime } from "../shared/runtime.js";
 export type { BotInfo } from "./docker.types.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
@@ -144,6 +145,8 @@ async function spawnUnlocked(config: BotConfig, botPath?: string, opts?: SpawnOp
     }
 
     const resolvedPath = validateBotPath(botPath ?? join(BOTS_BASE, config.name));
+    // Ensure bot state root exists before permission adjustments.
+    mkdirSync(resolvedPath, { recursive: true, mode: 0o777 });
     // Migrate legacy directory names (v0.3.2 and earlier)
     for (const [oldName, newName] of [["home-dot-claude", ".claude"], ["home-dot-codex", ".codex"], ["home-workspace", "workspace"], ["sessions", "tasks"]] as const) {
       const oldPath = join(resolvedPath, oldName);
@@ -195,6 +198,7 @@ async function spawnUnlocked(config: BotConfig, botPath?: string, opts?: SpawnOp
       Labels: {
         "mecha.bot": "true",
         "mecha.bot.name": config.name,
+        "mecha.bot.runtime": resolveRuntime(config.runtime, config.model),
         "mecha.bot.model": config.model,
       },
       HostConfig: {
@@ -387,18 +391,26 @@ export async function logs(name: string, follow: boolean): Promise<void> {
     container.modem.demuxStream(stream, process.stdout, process.stderr);
     await new Promise(() => {}); // hang until ctrl-c
   } else {
-    const buf = await container.logs({
+    const raw = await container.logs({
       stdout: true,
       stderr: true,
       tail: 200,
     });
-    // Demux the buffer — Docker multiplexes stdout/stderr with 8-byte frame headers
-    const { PassThrough } = await import("node:stream");
-    const stdout = new PassThrough();
-    const stderr = new PassThrough();
-    stdout.pipe(process.stdout);
-    stderr.pipe(process.stderr);
-    container.modem.demuxStream(buf as unknown as NodeJS.ReadableStream, stdout, stderr);
+    const buf = Buffer.isBuffer(raw) ? raw : Buffer.from(raw as unknown as Uint8Array);
+    // Docker multiplexed logs use 8-byte headers:
+    // [streamType(1), 0,0,0, payloadLen(4 bytes big-endian)] + payload
+    let offset = 0;
+    while (offset + 8 <= buf.length) {
+      const streamType = buf[offset];
+      const payloadLen = buf.readUInt32BE(offset + 4);
+      offset += 8;
+      if (offset + payloadLen > buf.length) break;
+      const chunk = buf.subarray(offset, offset + payloadLen);
+      if (streamType === 1) process.stdout.write(chunk);
+      else if (streamType === 2) process.stderr.write(chunk);
+      else process.stdout.write(chunk);
+      offset += payloadLen;
+    }
   }
 }
 

@@ -1,6 +1,6 @@
 # Mecha
 
-An army of agents. Run autonomous Claude bots in Docker containers with scheduling, webhooks, and bot-to-bot communication over Tailscale, while keeping your workspace ready for Codex CLI, Claude Code, and Gemini CLI.
+An army of agents. Run autonomous AI bots in Docker containers with scheduling, webhooks, and bot-to-bot communication over Tailscale, while keeping your workspace ready for Codex CLI, Claude Code, and Gemini CLI.
 
 ## Quickstart
 
@@ -12,13 +12,14 @@ npm install -g @mecha.im/cli
 # Initialize (builds Docker image)
 mecha init
 
-# Set your API key
-export ANTHROPIC_API_KEY=sk-ant-...
-# Or use a profile:
-mecha auth add anthropic-main sk-ant-...
+# Preferred for Codex runtime: login once with your Codex account
+codex login
+# Optional fallback: use an API key/profile
+# export OPENAI_API_KEY=sk-...
+# mecha auth add openai-main sk-...
 
 # Spawn a bot inline
-mecha spawn --name greeter --system "You greet people warmly."
+mecha spawn --name greeter --runtime codex --model gpt-5.3-codex --system "You greet people warmly."
 
 # Chat with it
 mecha query greeter "Hello!"
@@ -36,11 +37,12 @@ mecha rm greeter
 
 ```yaml
 name: reviewer
+runtime: codex
 system: |
   You are a code reviewer. You review PRs for bugs,
   security issues, and style violations.
-model: sonnet
-auth: anthropic-main
+model: gpt-5.3-codex
+# auth: openai-main   # optional when Codex account session is available
 max_turns: 25
 max_budget_usd: 1.00
 
@@ -128,13 +130,18 @@ The dashboard now uses a local browser session on `localhost` so the SPA and pro
 
 ## Auth
 
-Auth works via environment variable or named profiles:
+Auth works via existing Codex login session, or environment variable / named profiles:
 
 ```bash
-# Environment variable (simplest)
-export ANTHROPIC_API_KEY=sk-ant-...
+# Preferred: Codex CLI account login (reused by mecha)
+codex login
 
-# Named profile
+# Optional: OpenAI key/profile fallback
+# export OPENAI_API_KEY=sk-...
+# mecha auth add openai-main sk-...
+
+# Claude runtime still supported
+export ANTHROPIC_API_KEY=sk-ant-...
 mecha auth add anthropic-main sk-ant-...
 mecha auth add tailscale-main tskey-auth-...
 ```
@@ -145,7 +152,7 @@ Profiles are stored at `~/.mecha/auth/<name>.json`.
 
 - Workspace-mounted bots load shared project instructions from `AGENTS.md`, Claude Code settings from `.claude/`, and Codex CLI prompts/skills from `.codex/` when present.
 - Bots without a mounted workspace run from a stable state-backed working directory and only load user settings.
-- Host Codex auth is not copied into containers by default. Opt in with `MECHA_COPY_HOST_CODEX_AUTH=1` if you explicitly want that behavior.
+- Host Codex auth (`~/.codex/auth.json`) is copied into bot state by default when available. Set `MECHA_COPY_HOST_CODEX_AUTH=0` to disable this behavior.
 
 ## Codex CLI Workspace Support
 

@@ -93,7 +93,7 @@ export const AuthProfileNotFoundError = defError<[string]>(
 export const AuthNotConfiguredError = defError<[]>(
   "AuthNotConfiguredError",
   { code: "AUTH_NOT_CONFIGURED", statusCode: 401, exitCode: 1 },
-  () => `No API key configured. Set ANTHROPIC_API_KEY or run: mecha auth add <profile> <key>`,
+  () => `No API key configured. Set OPENAI_API_KEY / ANTHROPIC_API_KEY, or run: mecha auth add <profile> <key>`,
 );
 
 // --- Path errors ---

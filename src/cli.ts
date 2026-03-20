@@ -10,6 +10,7 @@ import { resolve, dirname, join } from "node:path";
 import { fileURLToPath } from "node:url";
 import type { BotInfo } from "./docker.types.js";
 import { existsSync, statSync } from "node:fs";
+import { homedir } from "node:os";
 import { randomBytes } from "node:crypto";
 import { execFile } from "node:child_process";
 import { MechaError } from "../shared/errors.js";
@@ -56,9 +57,14 @@ program
     };
     const hasDocker = check("Docker", "docker", ["info"]);
     check("Node.js " + process.version, "node", ["--version"]);
-    const hasKey = !!(process.env.ANTHROPIC_API_KEY || process.env.CLAUDE_CODE_OAUTH_TOKEN);
+    const hasKey = !!(
+      process.env.ANTHROPIC_API_KEY
+      || process.env.CLAUDE_CODE_OAUTH_TOKEN
+      || process.env.OPENAI_API_KEY
+      || existsSync(join(homedir(), ".codex", "auth.json"))
+    );
     if (hasKey) console.log(success("API key configured"));
-    else console.log(pc.yellow("!") + " No API key set " + pc.dim("(set ANTHROPIC_API_KEY or run: mecha auth add <name> <key>)"));
+    else console.log(pc.yellow("!") + " No API key set " + pc.dim("(set OPENAI_API_KEY / ANTHROPIC_API_KEY, run mecha auth add <name> <key>, or login via codex)"));
 
     if (!hasDocker) {
       console.error(pc.red("\nDocker is required. Install it and try again."));
@@ -99,7 +105,8 @@ program
   .description("Spawn a new bot from config file or inline flags")
   .option("--name <name>", "Bot name (for inline spawn)")
   .option("--system <prompt>", "System prompt (for inline spawn)")
-  .option("--model <model>", "Model to use", "sonnet")
+  .option("--runtime <runtime>", "Runtime engine: claude or codex")
+  .option("--model <model>", "Model to use")
   .option("--dir <path>", "Bot state directory")
   .option("--expose <port>", "Expose on host port")
   .action(async (configPath: string | undefined, opts) => {
@@ -119,9 +126,14 @@ program
         botPath = dirname(absPath);
       }
     } else if (opts.name && opts.system) {
+      if (opts.runtime && !["claude", "codex"].includes(opts.runtime)) {
+        console.error(`Invalid runtime: "${opts.runtime}" (valid: claude, codex)`);
+        process.exit(1);
+      }
       config = buildInlineConfig({
         name: opts.name,
         system: opts.system,
+        runtime: opts.runtime,
         model: opts.model,
       });
     } else {
@@ -302,7 +314,7 @@ program
 program
   .command("query <name> <message>")
   .description("Send a one-shot prompt to a bot")
-  .option("--model <model>", "Override model (e.g. sonnet, opus, haiku)")
+  .option("--model <model>", "Override model (e.g. sonnet, opus, gpt-5.3-codex)")
   .option("--system <prompt>", "Override system prompt")
   .option("--max-turns <n>", "Override max turns")
   .option("--resume <session>", "Resume a specific session ID")

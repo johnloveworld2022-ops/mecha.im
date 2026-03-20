@@ -33,12 +33,14 @@ export function loadBotConfig(filePath: string): BotConfig {
 export function buildInlineConfig(opts: {
   name: string;
   system: string;
+  runtime?: "claude" | "codex";
   model?: string;
 }): BotConfig {
   const result = botConfigSchema.safeParse({
     name: opts.name,
     system: opts.system,
-    model: opts.model ?? "sonnet",
+    runtime: opts.runtime,
+    model: opts.model ?? (opts.runtime === "codex" ? "gpt-5.3-codex" : "sonnet"),
   });
   if (!result.success) {
     const issues = result.error.issues.map((i) => `${i.path.join(".")}: ${i.message}`).join("; ");

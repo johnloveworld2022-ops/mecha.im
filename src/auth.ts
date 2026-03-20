@@ -7,6 +7,7 @@ import { atomicWriteText } from "../shared/atomic-write.js";
 import { AuthProfileNotFoundError, AuthNotConfiguredError, InvalidNameError } from "../shared/errors.js";
 import { log } from "../shared/logger.js";
 import { isValidName } from "../shared/validation.js";
+import { type BotRuntime, resolveRuntime } from "../shared/runtime.js";
 
 // --- Schema ---
 
@@ -158,6 +159,49 @@ export function resolveAuth(profileName?: string): ResolvedAuth {
 }
 
 /**
+ * Resolve auth for a specific runtime.
+ * For codex runtime, missing credentials can fall back to ~/.codex/auth.json inside the container,
+ * so this function may return null.
+ */
+export function resolveAuthForRuntime(runtimeInput: BotRuntime | string | undefined, profileName?: string): ResolvedAuth | null {
+  const runtime = resolveRuntime(runtimeInput, undefined);
+  if (runtime === "claude") {
+    return resolveAuth(profileName);
+  }
+
+  // codex runtime: explicit profile first
+  if (profileName) {
+    const cred = getCredential(profileName);
+    if (cred.type !== "api_key" || cred.env !== "OPENAI_API_KEY") {
+      throw new AuthProfileNotFoundError(`"${profileName}" is not a Codex auth credential (env must be OPENAI_API_KEY)`);
+    }
+    return { key: cred.key, env: cred.env, source: `profile:${profileName}` };
+  }
+
+  // codex runtime: default profile if it maps to OPENAI_API_KEY
+  const settings = readSettings();
+  if (settings.default_auth) {
+    try {
+      const cred = getCredential(settings.default_auth);
+      if (cred.type === "api_key" && cred.env === "OPENAI_API_KEY") {
+        return { key: cred.key, env: cred.env, source: `default:${settings.default_auth}` };
+      }
+    } catch (err) {
+      if (!(err instanceof AuthProfileNotFoundError)) throw err;
+    }
+  }
+
+  // codex runtime: explicit env var
+  const apiKey = process.env.OPENAI_API_KEY;
+  if (apiKey) {
+    return { key: apiKey, env: "OPENAI_API_KEY", source: "env:OPENAI_API_KEY" };
+  }
+
+  // No env/profile auth; codex can still use ~/.codex/auth.json in-container.
+  return null;
+}
+
+/**
  * Get all credentials that should be passed through to bot containers.
  * Returns credentials matching the given env var names.
  */
@@ -172,4 +216,3 @@ export function getPassthroughCredentials(envNames: string[]): Array<{ env: stri
   }
   return result;
 }
-

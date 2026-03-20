@@ -21,6 +21,7 @@ import { timingSafeEqual, createHmac as cryptoHmac } from "node:crypto";
 import { WebSocket as WsClient, WebSocketServer } from "ws";
 import { generateSecret, verifyTOTP, totpUri } from "../shared/totp.js";
 import { atomicWriteJsonAsync } from "../shared/atomic-write.js";
+import { resolveRuntime } from "../shared/runtime.js";
 
 const __dirname = dirname(fileURLToPath(import.meta.url));
 
@@ -289,6 +290,7 @@ export function startDashboardServer(port: number, host?: string) {
         config = buildInlineConfig({
           name: parsed.data.name,
           system: parsed.data.system,
+          runtime: parsed.data.runtime,
           model: parsed.data.model,
         });
       } else {
@@ -352,22 +354,27 @@ export function startDashboardServer(port: number, host?: string) {
     const entry = listRegistered()[name];
     if (!entry?.config) return c.json({ error: "Bot not found" }, 404);
 
-    // Read the bot's config to find its auth profile
+    // Read the bot's config to find runtime + auth profile.
     let botAuth: string | undefined;
+    let botRuntime: "claude" | "codex" = "claude";
     try {
       const config = loadBotConfig(entry.config);
       botAuth = config.auth;
+      botRuntime = resolveRuntime(config.runtime, config.model);
     } catch { /* ignore parse errors */ }
 
-    // List available Claude auth profiles
+    // List available profiles for this runtime
     const creds = loadCredentials();
-    const claudeProfiles = creds
-      .filter((cr) => cr.type === "api_key" || cr.type === "oauth_token")
+    const profiles = creds
+      .filter((cr) => botRuntime === "claude"
+        ? (cr.type === "api_key" || cr.type === "oauth_token")
+        : (cr.type === "api_key" && cr.env === "OPENAI_API_KEY"))
       .map((cr) => ({ name: cr.name, type: cr.type }));
 
     return c.json({
+      runtime: botRuntime,
       current_profile: botAuth ?? null,
-      profiles: claudeProfiles,
+      profiles,
     });
   });
 
@@ -381,16 +388,25 @@ export function startDashboardServer(port: number, host?: string) {
     }
     const profile = body.profile as string;
 
-    // Verify the profile exists and is a Claude auth type
+    // Verify the profile exists and is valid for bot runtime.
+    const entry = listRegistered()[name];
+    if (!entry?.config) return c.json({ error: "Bot not found" }, 404);
+
+    let runtime: "claude" | "codex" = "claude";
+    try {
+      const cfg = loadBotConfig(entry.config);
+      runtime = resolveRuntime(cfg.runtime, cfg.model);
+    } catch { /* fallback to default */ }
+
     const creds = loadCredentials();
     const cred = creds.find((cr) => cr.name === profile);
     if (!cred) return c.json({ error: `Profile "${profile}" not found` }, 404);
-    if (cred.type !== "api_key" && cred.type !== "oauth_token") {
-      return c.json({ error: `Profile "${profile}" is not a Claude auth credential` }, 400);
+    const valid = runtime === "claude"
+      ? (cred.type === "api_key" || cred.type === "oauth_token")
+      : (cred.type === "api_key" && cred.env === "OPENAI_API_KEY");
+    if (!valid) {
+      return c.json({ error: `Profile "${profile}" is not valid for runtime "${runtime}"` }, 400);
     }
-
-    const entry = listRegistered()[name];
-    if (!entry?.config) return c.json({ error: "Bot not found" }, 404);
 
     // Check busy state BEFORE mutating config
     const blocked = await guardBusy(c, name, { profile });

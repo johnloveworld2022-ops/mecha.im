@@ -6,8 +6,8 @@ import type { WebSocket } from "ws";
 import type { MechaPty, PtySpawnFn } from "./pty-types.js";
 import type { BotConfig } from "./types.js";
 import { log } from "../shared/logger.js";
+import { resolveRuntime } from "../shared/runtime.js";
 
-/** Resolve absolute path to `claude` binary. */
 function resolveClaudeBin(): string {
   const home = homedir();
   const candidates = [
@@ -21,6 +21,20 @@ function resolveClaudeBin(): string {
     if (existsSync(p)) return p;
   }
   return "claude";
+}
+
+function resolveCodexBin(): string {
+  const home = homedir();
+  const candidates = [
+    join(home, ".npm-global", "bin", "codex"),
+    join(home, ".local", "bin", "codex"),
+    "/usr/local/bin/codex",
+    "/usr/bin/codex",
+  ];
+  for (const p of candidates) {
+    if (existsSync(p)) return p;
+  }
+  return "codex";
 }
 
 const SCROLLBACK_LIMIT = 200;
@@ -137,24 +151,34 @@ export function createPtyManager(opts: CreatePtyManagerOpts): PtyManager {
         sessions.delete(key);
       }
 
-      // Build claude CLI args from bot config
+      const runtime = resolveRuntime(botConfig.runtime, botConfig.model);
+      // Build assistant CLI args from bot config
       const args: string[] = [];
-      if (isNewSession) {
-        args.push("--session-id", claudeSessionId);
+      if (runtime === "claude") {
+        if (isNewSession) {
+          args.push("--session-id", claudeSessionId);
+        } else {
+          args.push("--resume", claudeSessionId);
+        }
+        // Permission mode — bypass permissions skips interactive trust/accept prompts
+        if (botConfig.permission_mode === "bypassPermissions") {
+          args.push("--dangerously-skip-permissions", "--allow-dangerously-skip-permissions");
+        } else if (botConfig.permission_mode && botConfig.permission_mode !== "default") {
+          args.push("--permission-mode", botConfig.permission_mode);
+        }
+        if (botConfig.model) {
+          args.push("--model", botConfig.model);
+        }
       } else {
-        args.push("--resume", claudeSessionId);
-      }
-
-      // Permission mode — bypass permissions skips interactive trust/accept prompts
-      if (botConfig.permission_mode === "bypassPermissions") {
-        args.push("--dangerously-skip-permissions", "--allow-dangerously-skip-permissions");
-      } else if (botConfig.permission_mode && botConfig.permission_mode !== "default") {
-        args.push("--permission-mode", botConfig.permission_mode);
-      }
-
-      // Model
-      if (botConfig.model) {
-        args.push("--model", botConfig.model);
+        if (botConfig.permission_mode === "bypassPermissions") {
+          args.push("--dangerously-bypass-approvals-and-sandbox");
+        } else {
+          args.push("-a", "never");
+          args.push("--sandbox", botConfig.permission_mode === "plan" ? "read-only" : "workspace-write");
+        }
+        if (botConfig.model) {
+          args.push("--model", botConfig.model);
+        }
       }
 
       const safeCols = Math.max(MIN_COLS, Math.min(MAX_COLS, cols));
@@ -163,10 +187,10 @@ export function createPtyManager(opts: CreatePtyManagerOpts): PtyManager {
       const cwd = process.env.MECHA_WORKSPACE_CWD
         || (existsSync("/home/appuser/workspace") ? "/home/appuser/workspace" : "/state/home-workspace");
 
-      const claudeBin = resolveClaudeBin();
-      log.info(`Spawning PTY: ${claudeBin} ${args.join(" ")} (${safeCols}x${safeRows})`);
+      const bin = runtime === "claude" ? resolveClaudeBin() : resolveCodexBin();
+      log.info(`Spawning PTY (${runtime}): ${bin} ${args.join(" ")} (${safeCols}x${safeRows})`);
 
-      const pty = spawnFn(claudeBin, args, {
+      const pty = spawnFn(bin, args, {
         name: "xterm-256color",
         cols: safeCols,
         rows: safeRows,

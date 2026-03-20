@@ -4,6 +4,7 @@ import { Button, Input, Select, Textarea, Card, Alert } from "../components";
 
 interface Config {
   name?: string;
+  runtime?: string;
   model?: string;
   max_turns?: number;
   permission_mode?: string;
@@ -129,7 +130,15 @@ export default function ConfigEditor() {
   }
 
   const authType = config.auth_type;
-  const authTypeLabel = authType === "oauth" ? "OAuth" : authType === "api_key" ? "API Key" : "Unknown";
+  const authTypeLabel = authType === "oauth"
+    ? "OAuth"
+    : authType === "anthropic_api_key"
+      ? "Anthropic API Key"
+      : authType === "openai_api_key"
+        ? "OpenAI API Key"
+        : authType === "api_key"
+          ? "API Key"
+          : "Unknown";
 
   return (
     <section>
@@ -141,18 +150,28 @@ export default function ConfigEditor() {
           <div className="text-sm text-foreground font-mono">{config.name ?? "—"}</div>
         </div>
 
+        {/* Runtime */}
+        <div className="space-y-1">
+          <label className="text-sm text-muted-foreground">Runtime</label>
+          <Select
+            value={(currentVal("runtime") as string) ?? "claude"}
+            onChange={(e) => updateDraft("runtime", e.target.value)}
+            className="w-full"
+          >
+            <option value="claude">claude</option>
+            <option value="codex">codex</option>
+          </Select>
+        </div>
+
         {/* Model */}
         <div className="space-y-1">
           <label className="text-sm text-muted-foreground">Model</label>
-          <Select
+          <Input
             value={(currentVal("model") as string) ?? "sonnet"}
             onChange={(e) => updateDraft("model", e.target.value)}
-            className="w-full"
-          >
-            <option value="sonnet">sonnet</option>
-            <option value="opus">opus</option>
-            <option value="haiku">haiku</option>
-          </Select>
+            className="w-full font-mono"
+            placeholder="e.g. sonnet or gpt-5.3-codex"
+          />
         </div>
 
         {/* Max Turns */}

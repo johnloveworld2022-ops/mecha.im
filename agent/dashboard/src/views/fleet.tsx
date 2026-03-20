@@ -7,6 +7,7 @@ export default function Fleet() {
   const [showSpawn, setShowSpawn] = useState(false);
   const [spawnName, setSpawnName] = useState("");
   const [spawnSystem, setSpawnSystem] = useState("");
+  const [spawnRuntime, setSpawnRuntime] = useState<"claude" | "codex">("claude");
   const [spawnModel, setSpawnModel] = useState("sonnet");
   const [actionBusy, setActionBusy] = useState(false);
   const [message, setMessage] = useState<{ text: string; type: "success" | "error" } | null>(null);
@@ -20,7 +21,7 @@ export default function Fleet() {
       const resp = await fleetFetch("/api/bots", {
         method: "POST",
         headers: { "Content-Type": "application/json" },
-        body: JSON.stringify({ name: spawnName, system: spawnSystem, model: spawnModel }),
+        body: JSON.stringify({ name: spawnName, system: spawnSystem, runtime: spawnRuntime, model: spawnModel }),
       });
       const data = await resp.json() as Record<string, unknown>;
       if (!resp.ok) {
@@ -31,6 +32,8 @@ export default function Fleet() {
       setShowSpawn(false);
       setSpawnName("");
       setSpawnSystem("");
+      setSpawnRuntime("claude");
+      setSpawnModel("sonnet");
       refreshBots();
     } catch { setMessage({ text: "Network error", type: "error" }); }
     finally { setActionBusy(false); }
@@ -122,13 +125,22 @@ export default function Fleet() {
           />
           <div className="flex items-center gap-3">
             <Select
+              value={spawnRuntime}
+              onChange={(e) => {
+                const next = e.target.value as "claude" | "codex";
+                setSpawnRuntime(next);
+                setSpawnModel(next === "codex" ? "gpt-5.3-codex" : "sonnet");
+              }}
+            >
+              <option value="claude">Claude</option>
+              <option value="codex">Codex</option>
+            </Select>
+            <Input
               value={spawnModel}
               onChange={(e) => setSpawnModel(e.target.value)}
-            >
-              <option value="sonnet">Sonnet</option>
-              <option value="opus">Opus</option>
-              <option value="haiku">Haiku</option>
-            </Select>
+              placeholder={spawnRuntime === "codex" ? "gpt-5.3-codex" : "sonnet"}
+              className="w-56 font-mono"
+            />
             <div className="flex-1" />
             <Button
               variant="secondary"

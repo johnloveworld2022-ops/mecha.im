@@ -8,6 +8,7 @@ import { Scheduler } from "./scheduler.js";
 import { createPtyManager } from "./pty-manager.js";
 import { attachTerminalWs } from "./ws-terminal.js";
 import { log } from "../shared/logger.js";
+import { resolveRuntime } from "../shared/runtime.js";
 
 const CREDENTIALS_PATH = "/state/credentials.yaml";
 
@@ -43,27 +44,36 @@ function loadConfig() {
   }
 
   // Re-resolve auth from credentials.yaml if available (supports runtime auth switching)
-  // Read config.auth first to determine if credentials resolution is required
+  // Read partial config first to determine runtime and auth profile if present.
   let configAuth: string | undefined;
+  let configRuntime: string | undefined;
+  let configModel: string | undefined;
   try {
     const configRaw = readFileSync(CONFIG_PATH, "utf-8");
-    const configParsed = parseYaml(configRaw) as { auth?: string };
+    const configParsed = parseYaml(configRaw) as { auth?: string; runtime?: string; model?: string };
     configAuth = configParsed.auth;
+    configRuntime = configParsed.runtime;
+    configModel = configParsed.model;
   } catch { /* config will be parsed again below */ }
+  const runtime = resolveRuntime(process.env.MECHA_RUNTIME ?? configRuntime, configModel ?? process.env.MECHA_MODEL);
 
   if (configAuth && existsSync(CREDENTIALS_PATH)) {
-    // Profile is set — clear old env vars and resolve from credentials (fail fast on any error)
+    // Profile is set — clear old env vars and resolve from credentials (fail fast on any error).
     delete process.env.ANTHROPIC_API_KEY;
     delete process.env.CLAUDE_CODE_OAUTH_TOKEN;
+    delete process.env.OPENAI_API_KEY;
     try {
       const credsRaw = readFileSync(CREDENTIALS_PATH, "utf-8");
       const credsParsed = parseYaml(credsRaw) as { credentials?: Array<{ name: string; type: string; env: string; key: string }> };
       const cred = credsParsed.credentials?.find((c) => c.name === configAuth);
-      if (cred && (cred.type === "api_key" || cred.type === "oauth_token")) {
+      const valid = runtime === "claude"
+        ? !!cred && (cred.type === "api_key" || cred.type === "oauth_token")
+        : !!cred && cred.type === "api_key" && cred.env === "OPENAI_API_KEY";
+      if (valid && cred) {
         process.env[cred.env] = cred.key;
         log.info(`Auth resolved from credentials.yaml: profile="${configAuth}" type=${cred.type}`);
       } else {
-        log.error(`Auth profile "${configAuth}" not found or not a Claude auth credential in credentials.yaml`);
+        log.error(`Auth profile "${configAuth}" not found or invalid for runtime "${runtime}"`);
         process.exit(1);
       }
     } catch (err) {
@@ -74,9 +84,17 @@ function loadConfig() {
     }
   }
 
-  if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
-    log.error("ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required");
-    process.exit(1);
+  if (runtime === "claude") {
+    if (!process.env.ANTHROPIC_API_KEY && !process.env.CLAUDE_CODE_OAUTH_TOKEN) {
+      log.error("ANTHROPIC_API_KEY or CLAUDE_CODE_OAUTH_TOKEN env var is required for runtime=claude");
+      process.exit(1);
+    }
+  } else {
+    const hasCodexAuthFile = existsSync("/home/appuser/.codex/auth.json");
+    if (!process.env.OPENAI_API_KEY && !hasCodexAuthFile) {
+      log.error("OPENAI_API_KEY or /home/appuser/.codex/auth.json is required for runtime=codex");
+      process.exit(1);
+    }
   }
 
   try {
@@ -93,6 +111,7 @@ function loadConfig() {
       const result = botConfigSchema.safeParse({
         name,
         system: process.env.MECHA_SYSTEM_PROMPT ?? "You are a helpful assistant.",
+        runtime,
         model: process.env.MECHA_MODEL ?? "sonnet",
       });
       if (!result.success) {

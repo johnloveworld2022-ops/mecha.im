@@ -118,10 +118,18 @@ export function checkEnv(cInfo: Docker.ContainerInspectInfo): CheckResult[] {
   const envList: string[] = cInfo.Config?.Env ?? [];
   const env = Object.fromEntries(envList.map(e => { const i = e.indexOf("="); return i >= 0 ? [e.slice(0, i), e.slice(i + 1)] : [e, ""]; }));
 
-  const hasAuth = !!env.ANTHROPIC_API_KEY || !!env.CLAUDE_CODE_OAUTH_TOKEN;
-  checks.push(hasAuth
-    ? { ok: true, label: `Auth: ${env.CLAUDE_CODE_OAUTH_TOKEN ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY"}` }
-    : { ok: false, label: "Auth credential", detail: "neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN" });
+  const runtime = env.MECHA_RUNTIME === "codex" ? "codex" : "claude";
+  if (runtime === "codex") {
+    const hasOpenAi = !!env.OPENAI_API_KEY;
+    checks.push(hasOpenAi
+      ? { ok: true, label: "Auth: OPENAI_API_KEY" }
+      : { ok: true, label: "Auth: OPENAI_API_KEY not set (may use ~/.codex/auth.json)" });
+  } else {
+    const hasAuth = !!env.ANTHROPIC_API_KEY || !!env.CLAUDE_CODE_OAUTH_TOKEN;
+    checks.push(hasAuth
+      ? { ok: true, label: `Auth: ${env.CLAUDE_CODE_OAUTH_TOKEN ? "CLAUDE_CODE_OAUTH_TOKEN" : "ANTHROPIC_API_KEY"}` }
+      : { ok: false, label: "Auth credential", detail: "neither ANTHROPIC_API_KEY nor CLAUDE_CODE_OAUTH_TOKEN" });
+  }
 
   const cwd = env.MECHA_WORKSPACE_CWD;
   if (cwd) {
@@ -133,7 +141,7 @@ export function checkEnv(cInfo: Docker.ContainerInspectInfo): CheckResult[] {
   const hasExplicitWorkspace = cwd?.startsWith("/home/appuser/");
   const psExpected = hasExplicitWorkspace ? ps === "1" : true; // only fail if workspace set but settings disabled
   checks.push({ ok: psExpected, label: `MECHA_ENABLE_PROJECT_SETTINGS = ${ps ?? "(unset)"}`,
-    detail: !psExpected ? "skills, rules, CLAUDE.md won't load from workspace" : undefined });
+    detail: !psExpected ? "skills, rules, and project instructions won't load from workspace" : undefined });
 
   checks.push({ ok: !!env.MECHA_BOT_NAME, label: `MECHA_BOT_NAME = ${env.MECHA_BOT_NAME ?? "(unset)"}` });
   checks.push({ ok: !!env.MECHA_BOT_TOKEN, label: `MECHA_BOT_TOKEN ${env.MECHA_BOT_TOKEN ? "set" : "(unset)"}` });
@@ -147,6 +155,10 @@ export async function checkRuntime(container: Docker.Container): Promise<CheckRe
   const claude = await dockerRun(container, ["claude", "--version"]);
   const cv = claude.stdout.split("\n")[0]?.replace(/[^\x20-\x7e]/g, "").trim() ?? "";
   checks.push(cv ? { ok: true, label: `claude: ${cv}` } : { ok: false, label: "claude CLI", detail: "not found" });
+
+  const codex = await dockerRun(container, ["codex", "--version"]);
+  const codexVersion = codex.stdout.split("\n")[0]?.replace(/[^\x20-\x7e]/g, "").trim() ?? "";
+  checks.push(codexVersion ? { ok: true, label: `codex: ${codexVersion}` } : { ok: false, label: "codex CLI", detail: "not found" });
 
   const node = await dockerRun(container, ["node", "--version"]);
   const nv = node.stdout.replace(/[^\x20-\x7ev.]/g, "").trim();

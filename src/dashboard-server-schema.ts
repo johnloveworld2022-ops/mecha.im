@@ -38,6 +38,7 @@ export const spawnBodySchema = z.object({
   config_path: z.string().optional(),
   name: z.string().min(1).max(32).optional(),
   system: z.string().min(1).optional(),
+  runtime: z.enum(["claude", "codex"]).optional(),
   model: z.string().optional(),
   dir: z.string().optional(),
 });

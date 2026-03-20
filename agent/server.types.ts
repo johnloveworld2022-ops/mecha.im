@@ -1,4 +1,4 @@
-/** Result shape returned by runClaude */
+/** Result shape returned by assistant runtime execution. */
 export interface QueryResult {
   text: string;
   costUsd: number;

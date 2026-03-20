@@ -15,7 +15,7 @@ import { createDashboardRoutes, verifySessionCookie } from "./routes/dashboard.j
 import { SessionHistory } from "./session-history.js";
 import type { PtyManager } from "./pty-manager.js";
 import { promptSchema, INTERNAL_AUTH_HEADER, BOT_TOKEN, FLEET_INTERNAL_SECRET } from "./server-schema.js";
-import { runClaude, activityStateForSource, promptSourceForRequest, getWorkspaceContext } from "./server-utils.js";
+import { runAgent, activityStateForSource, promptSourceForRequest, getWorkspaceContext } from "./server-utils.js";
 import { createScheduleRoutes } from "./routes/schedule.js";
 import { createConfigRoutes } from "./routes/config.js";
 import { createSessionRoutes } from "./routes/sessions.js";
@@ -76,7 +76,7 @@ export function createApp(config: BotConfig, startedAt: number, ptyManager?: Pty
     sessions.beginIsolatedTask(source);
     activity.transition(activityStateForSource(source));
     try {
-      const result = await runClaude(prompt, config, undefined, undefined, [mechaTools]);
+      const result = await runAgent(prompt, config, undefined, undefined, [mechaTools]);
       if (result.sessionId) sessions.captureSessionId(result.sessionId);
       sessions.addCost(result.costUsd);
       costs.add(result.costUsd);
@@ -139,7 +139,7 @@ export function createApp(config: BotConfig, startedAt: number, ptyManager?: Pty
       try {
         await stream.writeSSE({ event: "start", data: JSON.stringify({ task_id: task.id }) });
 
-        const result = await runClaude(
+        const result = await runAgent(
           message,
           config,
           resumeSessionId,

@@ -1,10 +1,12 @@
 import { z } from "zod";
+import { BOT_RUNTIMES } from "../shared/runtime.js";
 
 const VALID_CRON = /^(\S+\s+){4}\S+$/;
 
 export const botConfigSchema = z.object({
   name: z.string().min(1).max(32),
   system: z.string().min(1),
+  runtime: z.enum(BOT_RUNTIMES).optional(),
   model: z.string().default("sonnet"),
   auth: z.string().optional(),
   max_turns: z.number().int().min(1).max(100).default(25),

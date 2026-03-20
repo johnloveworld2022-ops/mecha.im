@@ -6,8 +6,10 @@ import { log } from "../../shared/logger.js";
 import type { BotConfig } from "../types.js";
 import type { Mutex } from "../../shared/mutex.js";
 import type { ActivityTracker } from "../activity.js";
+import { resolveRuntime } from "../../shared/runtime.js";
 
 const configUpdateSchema = z.object({
+  runtime: z.enum(["claude", "codex"]).optional(),
   model: z.string().min(1).optional(),
   max_turns: z.number().int().min(1).max(100).optional(),
   permission_mode: z.enum(["default", "acceptEdits", "bypassPermissions", "plan", "dontAsk"]).optional(),
@@ -22,12 +24,15 @@ export function createConfigRoutes(config: BotConfig, busy: Mutex, activity: Act
   const app = new Hono();
 
   app.get("/config", (c) => {
+    const runtime = resolveRuntime(config.runtime, config.model);
     const hasOauth = !!process.env.CLAUDE_CODE_OAUTH_TOKEN;
-    const hasApiKey = !!process.env.ANTHROPIC_API_KEY;
-    const authType = hasOauth ? "oauth" : hasApiKey ? "api_key" : "unknown";
+    const hasAnthropicKey = !!process.env.ANTHROPIC_API_KEY;
+    const hasOpenAiKey = !!process.env.OPENAI_API_KEY;
+    const authType = hasOauth ? "oauth" : hasAnthropicKey ? "anthropic_api_key" : hasOpenAiKey ? "openai_api_key" : "unknown";
 
     return c.json({
       name: config.name,
+      runtime,
       model: config.model,
       auth_type: authType,
       auth_profile: config.auth ?? null,
@@ -41,16 +46,19 @@ export function createConfigRoutes(config: BotConfig, busy: Mutex, activity: Act
   });
 
   app.get("/auth/profiles", (c) => {
+    const runtime = resolveRuntime(config.runtime, config.model);
     if (!existsSync(CREDENTIALS_PATH)) {
       return c.json({ current_profile: config.auth ?? null, profiles: [] });
     }
     try {
       const raw = readFileSync(CREDENTIALS_PATH, "utf-8");
-      const parsed = parseYaml(raw) as { credentials?: Array<{ name: string; type: string }> };
-      const claudeProfiles = (parsed.credentials ?? [])
-        .filter((cr) => cr.type === "api_key" || cr.type === "oauth_token")
+      const parsed = parseYaml(raw) as { credentials?: Array<{ name: string; type: string; env: string }> };
+      const profiles = (parsed.credentials ?? [])
+        .filter((cr) => runtime === "claude"
+          ? (cr.type === "api_key" || cr.type === "oauth_token")
+          : (cr.type === "api_key" && cr.env === "OPENAI_API_KEY"))
         .map((cr) => ({ name: cr.name, type: cr.type }));
-      return c.json({ current_profile: config.auth ?? null, profiles: claudeProfiles });
+      return c.json({ current_profile: config.auth ?? null, profiles });
     } catch {
       return c.json({ current_profile: config.auth ?? null, profiles: [] });
     }
@@ -69,6 +77,8 @@ export function createConfigRoutes(config: BotConfig, busy: Mutex, activity: Act
 
     const updates = result.data;
 
+    const nextRuntime = resolveRuntime(updates.runtime ?? config.runtime, updates.model ?? config.model);
+
     // Validate auth profile if being changed
     if (updates.auth !== undefined) {
       if (!existsSync(CREDENTIALS_PATH)) {
@@ -76,10 +86,13 @@ export function createConfigRoutes(config: BotConfig, busy: Mutex, activity: Act
       }
       try {
         const credsRaw = readFileSync(CREDENTIALS_PATH, "utf-8");
-        const credsParsed = parseYaml(credsRaw) as { credentials?: Array<{ name: string; type: string }> };
+        const credsParsed = parseYaml(credsRaw) as { credentials?: Array<{ name: string; type: string; env: string }> };
         const cred = credsParsed.credentials?.find((cr) => cr.name === updates.auth);
-        if (!cred || (cred.type !== "api_key" && cred.type !== "oauth_token")) {
-          return c.json({ error: `Profile "${updates.auth}" not found or not a Claude auth credential` }, 404);
+        const valid = nextRuntime === "claude"
+          ? !!cred && (cred.type === "api_key" || cred.type === "oauth_token")
+          : !!cred && cred.type === "api_key" && cred.env === "OPENAI_API_KEY";
+        if (!valid) {
+          return c.json({ error: `Profile "${updates.auth}" not found or invalid for runtime "${nextRuntime}"` }, 404);
         }
       } catch {
         return c.json({ error: "Failed to read credentials file" }, 500);
@@ -96,6 +109,7 @@ export function createConfigRoutes(config: BotConfig, busy: Mutex, activity: Act
       const configParsed = parseYaml(configRaw) as Record<string, unknown>;
       const changes: Record<string, unknown> = {};
 
+      if (updates.runtime !== undefined) { configParsed.runtime = updates.runtime; changes.runtime = updates.runtime; }
       if (updates.model !== undefined) { configParsed.model = updates.model; changes.model = updates.model; }
       if (updates.max_turns !== undefined) { configParsed.max_turns = updates.max_turns; changes.max_turns = updates.max_turns; }
       if (updates.permission_mode !== undefined) { configParsed.permission_mode = updates.permission_mode; changes.permission_mode = updates.permission_mode; }
